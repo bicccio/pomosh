@@ -72,7 +72,7 @@ help()
             -g LOG_DIRECTORY
                 use LOG_DIRECTORY other than default ~/.pomosh/log/             
             -c calendar
-         		    if enabled specify the calendar name.
+                if enabled specify the calendar name.
             -h
                 print this help.
 	EndHelp
