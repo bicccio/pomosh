@@ -5,24 +5,41 @@ POMO_SH=$(basename "$0")
 POMO_PATH=$(dirname "$0")
 POMO_FULL_SH="$0"
 export POMO_SH POMO_FULL_SH
+POMO_ICON=$POMO_PATH"/icon/pomodoro.jpg"
 
 POMO_HOME="$HOME/.pomosh"
-POMO_LOG=$POMO_HOME'/pomos'
-POMO_CONFIG=$POMO_HOME"/pomosh.config"
-POMO_ICON=$POMO_PATH"/icon/pomodoro.png"
+POMO_CONFIG=$POMO_HOME"/pomosh.cfg"
+
+if [ ! -f "$POMO_CONFIG" ]
+then
+  echo "Fatal Error: Cannot read configuration file $POMO_CONFIG"
+  exit 1;
+fi
+
+POMO_LOG="$POMO_HOME/pomos"
+if [ ! -d $POMO_LOG ]
+then
+  echo echo "Fatal Error: Cannot write in log directory $POMO_LOG"
+  exit 1;
+fi
 
 # ARGUMENTS
 #---------------------
-cal=$1
-eventname=$2
+eventname=$1
 
-# SOME USEFUL VARIABLES
+# DEFAULT TIME CONFIGURATION
 #----------------------
+pomodoro_min=25
+short_break_min=5
+long_break_min=15
+
+# EXTENSIONS
+#-----------
+calendar_enabled="false"
+growl_enabled="false"
+
 time=$(date "+%H:%M")
-day=$(date "+%Y%m%d")i
-# today log file name
-#POMO_LOG_FILE="$POMO_LOG/pomodoro_$day.log"
-# read variable from config file
+day=$(date "+%Y%m%d")
 
 online_usage="$POMO_SH [-lh] [-L DATE] [-d CONFIG_FILE] [-c calendar] 
 			  -g [LOG_DIRECTORY] [pomodoro_name]"
@@ -55,7 +72,7 @@ help()
             -g LOG_DIRECTORY
                 use LOG_DIRECTORY other than default ~/.pomosh/log/             
             -c calendar
-         		if enabled specify the calendar name to submit the new event.
+         		    if enabled specify the calendar name.
             -h
                 print this help.
 	EndHelp
@@ -95,12 +112,20 @@ draw_bar()
 	echo '|'$bar$spaces'|'
 }
 
+# MAIN
+#-----
+
+# read config file
+source $POMO_CONFIG
+POMO_LOG_FILE="$POMO_LOG/pomodoro_$day.log"
+
 # PROCESS OPTION
 #-------------------------------------------------
 while getopts "hlL:d:g:" Option
   do
     case $Option in
     'l')
+    echo $POMO_LOG_FILE
 		[ -f "$POMO_LOG_FILE" ] && cat "$POMO_LOG_FILE" || echo "No pomos today"
 		exit 0
 		;;
@@ -139,10 +164,6 @@ while getopts "hlL:d:g:" Option
     esac
   done
 
-
-source $POMO_CONFIG
-POMO_LOG_FILE="$POMO_LOG/pomodoro_$day.log"
-
 # START POMODORO
 #------------------
 timer $pomodoro_min 
@@ -155,12 +176,11 @@ then
 else
   today_pomos=1
 fi
-echo -e "$today_pomos) \t $time \t $2" >> $POMO_LOG_FILE
+echo -e "$today_pomos) \t $time \t $eventname" >> $POMO_LOG_FILE
 
 # if enabled create new google calendar event
 if [ "$calendar_enabled" = "true" ]
 then
-  echo "calendar"
   calendar="$eventname today at $time for 25 minutes"
   google calendar add --cal "$cal" "$calendar"
 fi
