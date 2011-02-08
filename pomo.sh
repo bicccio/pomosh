@@ -121,46 +121,49 @@ POMO_LOG_FILE="$POMO_LOG/pomodoro_$day.log"
 
 # PROCESS OPTION
 #-------------------------------------------------
-while getopts "hlL:d:g:" Option
+while getopts "hlL:d:g:c:" Option
   do
     case $Option in
     'l')
-    echo $POMO_LOG_FILE
-		[ -f "$POMO_LOG_FILE" ] && cat "$POMO_LOG_FILE" || echo "No pomos today"
-		exit 0
-		;;
-	'L')
-		if [ -f "$POMO_LOG/pomodoro_$OPTARG.log" ] 
+      echo $POMO_LOG_FILE
+		  [ -f "$POMO_LOG_FILE" ] && cat "$POMO_LOG_FILE" || echo "No pomos today"
+		  exit 0
+		  ;;
+	  'L')
+		  if [ -f "$POMO_LOG/pomodoro_$OPTARG.log" ] 
 			then 
-				cat "$POMO_LOG/pomodoro_$OPTARG.log" 
+			  cat "$POMO_LOG/pomodoro_$OPTARG.log" 
 				exit 0
 			else
-				echo "No pomos in this date"
+			  echo "No pomos in this date"
 				exit 1
 			fi
-        ;;
-	'd')
-		if [ -f "$OPTARG" ] 
+      ;;
+	  'd')
+		  if [ -f "$OPTARG" ] 
 			then
 				POMO_CONFIG=$OPTARG 
 			else
 				echo echo "specified configuration file  doesn't exists"
 				exit 1
 			fi
-		;;
-	'g')
-		if [ -d "$OPTARG" ]
+		  ;;
+	  'g')
+		  if [ -d "$OPTARG" ]
 			then 
 				POMO_LOG=$OPTARG
 			else
 				echo "specified log directory doesn't exists"
 				exit 1
 			fi
-		;;
-	'h')
-		help
-		exit 1
-		;;
+		  ;;
+	  'h')
+		  help
+		  exit 0
+		  ;;
+    'c')
+      cal=$OPTARG
+      ;;
     esac
   done
 
