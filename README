@@ -1,0 +1,65 @@
+-------------
+Pomosh
+-------------
+Simple shell script for time management, based on the Pomodoro technique.
+You can find more informations on the Pomodoro Technique on: 
+   
+   http://www.pomodorotechnique.com/
+
+-------------
+Usage
+-------------
+Usage: pomo.sh [-lh] [-L DATE] [-d CONFIG_FILE] [-c calendar] 
+			  -g [LOG_DIRECTORY] [pomodoro_name]
+
+Example: 
+       pomo.sh "write exhaustive help guide"
+
+Options:
+       -l
+            list today pomos.
+       -L DATE
+            list DATE pomos. DATE must be in YYYYMMDD format.
+       -d CONFIG_FILE
+            use CONFIG_FILE file other than value in config file. 
+            Default value is $HOME/.pomosh/pomosh.config
+       -g LOG_DIRECTORY
+            use LOG_DIRECTORY other than value in config file.
+            Default value is $HOME/.pomosh/log/             
+       -c calendar
+            if enabled specify the calendar name.
+       -h
+            print this help.
+
+Configuration:       
+       POMO_HOME		the Pomosh home directory.
+       POMO_LOG		        the logs directory.
+       POMO_CONFIG=CONFIG_FILE  same as option -d CONFIG_FILE.
+            
+       pomodoro_min		pomodoro duration in minutes (default 25).
+       short_break_min		short break duration in minutes (default 5).
+       long_break_min        	long break duration in minutes (default 15).
+            
+       calendar_enabled		enable Google calendar synchronization. (default='false')
+       growl_enabled            enable Growl notifycations. (default='false')
+
+
+-------------
+Extension
+-------------
+
+Google calendar
+---------------
+Pomosh can save every completed pomodoro on Google calendar. This feature require  GoogleCL and need to be enabled in pomosh.config configuration file. More information on GoogleCl are available on http://code.google.com/p/googlecl/
+Dedicated calendar can be associated with pomosh using the 'c' option. 
+Example:
+   
+   pomosh -c "my pomosh" "some task"
+
+the above command will generate a calendar event with the name "some task" in the
+"my pomosh" calendar. If 'c' option is omitted the default calendar will be used.
+
+Growl
+-----
+On Mac OSX pomosh can post Growl notification about pomodoro completion and long or short break completion. This feature require growlnotify and need to be enabled in pomadsh.config configuration file.
+http://growl.info/extras.php

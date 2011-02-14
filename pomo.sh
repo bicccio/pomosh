@@ -63,19 +63,32 @@ help()
       Example: $POMO_SH "write exhaustive help guide"
 
       Options:
-            -l
-                list today pomos.
-            -L DATE
-                list DATE pomos. DATE must be in YYYYMMDD format.
-            -d CONFIG_FILE
-                use CONFIG_FILE file other than default ~/.pomosh/pomosh.config
-            -g LOG_DIRECTORY
-                use LOG_DIRECTORY other than default ~/.pomosh/log/             
-            -c calendar
-                if enabled specify the calendar name.
-            -h
-                print this help.
-	EndHelp
+          -l
+            list today pomos.
+          -L DATE
+            list DATE pomos. DATE must be in YYYYMMDD format.
+          -d CONFIG_FILE
+            use CONFIG_FILE file other than default ~/.pomosh/pomosh.config
+          -g LOG_DIRECTORY
+            use LOG_DIRECTORY other than default ~/.pomosh/log/             
+          -c calendar
+            if enabled specify the calendar name.
+          -h
+            print this help.
+      
+      Configuration:       
+          POMO_HOME               the Pomosh home directory.
+          POMO_LOG                the logs directory.
+          POMO_CONFIG=CONFIG_FILE same as option -d CONFIG_FILE.
+            
+          pomodoro_min            pomodoro duration in minutes (default 25).
+          short_break_min         short break duration in minutes (default 5).
+          long_break_min          long break duration in minutes (default 15).
+            
+          calendar_enabled        enable Google calendar synchronization. (default='false')
+          growl_enabled           enable Growl notifycations. (default='false')
+
+EndHelp
     exit 0
 }
 
@@ -103,13 +116,17 @@ timer()
 
 draw_bar()
 {
-	for (( i=0; i<$1+1;i++)); do
-    	bar=$bar"="
-    done
-	for (( j=0; j<$2-$1; j++)); do
-	  	spaces=$spaces'-'
-	done
-	echo '|'$bar$spaces'|'
+  for (( i=0;i<$2+1;i++))
+  do
+    [ $i -le $1 ] && bar=$bar"="|| bar=$bar"-"
+    #if [ $i -le $1 ]
+    #  then
+    #    bar=$bar"="
+    #  else
+    #    bar=$bar"-"
+    #fi
+  done
+  echo '|'$bar'|'
 }
 
 # MAIN
