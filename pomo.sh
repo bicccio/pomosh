@@ -97,36 +97,29 @@ EndHelp
 
 timer()
 {
-	let tot_minutes=$1
-	sec=0
-	for (( i=$tot_minutes; i>=0; i--)); do
-		minutes=`echo $i | sed s/^[0-9]$/0\&/`
-		bar=$(draw_bar $i $tot_minutes)
-		for (( j=$sec; j>=0; j--)); 
-		do
-			sleep 1 &
-			wait
-			seconds=`echo $j | sed s/^[0-9]$/0\&/`
-			printf "$minutes:$seconds $bar \r"
-		done
-		sec=59
-		bar=''
-	done
+  min=$1
+  bar=$(draw_bar $1 $1)
+  while [ $min -gt 0 ]; do
+    for (( sec=60; sec>0; sec--)); do
+      [ $sec == 59 ] && {
+        let min=$min-1
+        bar=$(draw_bar $min $1)
+      }
+      [ $sec == 60 ] && print_sec='00' || print_sec=`echo $sec | sed s/^[0-9]$/0\&/`
+      print_min=`echo $min | sed s/^[0-9]$/0\&/`
+      printf "$print_min:$print_sec $bar \r"
+      sleep 1 &
+      wait
+    done
+  done
 }
 
 draw_bar()
 {
-  for (( i=0;i<$2+1;i++))
-  do
-    [ $i -le $1 ] && bar=$bar"="|| bar=$bar"-"
-    #if [ $i -le $1 ]
-    #  then
-    #    bar=$bar"="
-    #  else
-    #    bar=$bar"-"
-    #fi
+  for (( i=0;i<$2+1;i++)); do
+    [ $i -le $1 ] && b=$b"="|| b=$b"-"
   done
-  echo '|'$bar'|'
+  echo '|'$b'|'
 }
 
 # MAIN
