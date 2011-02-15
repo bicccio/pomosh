@@ -8,24 +8,8 @@ export POMO_SH POMO_FULL_SH
 POMO_ICON=$POMO_PATH"/icon/pomodoro.jpg"
 
 POMO_HOME="$HOME/.pomosh"
-POMO_CONFIG=$POMO_HOME"/pomosh.cfg"
-
-if [ ! -f "$POMO_CONFIG" ]
-then
-  echo "Fatal Error: Cannot read configuration file $POMO_CONFIG"
-  exit 1;
-fi
-
 POMO_LOG="$POMO_HOME/pomos"
-if [ ! -d $POMO_LOG ]
-then
-  echo echo "Fatal Error: Cannot write in log directory $POMO_LOG"
-  exit 1;
-fi
-
-# ARGUMENTS
-#---------------------
-eventname=$1
+POMO_CONFIG=$POMO_HOME"/pomosh.cfg"
 
 # DEFAULT TIME CONFIGURATION
 #----------------------
@@ -122,11 +106,25 @@ draw_bar()
   echo '|'$b'|'
 }
 
+
 # MAIN
 #-----
 
 # read config file
 source $POMO_CONFIG
+
+if [ ! -f "$POMO_CONFIG" ]
+then
+  echo "Fatal Error: Cannot read configuration file $POMO_CONFIG"
+  exit 1;
+fi
+
+if [ ! -d $POMO_LOG ]
+then
+  echo echo "Fatal Error: Cannot write in log directory $POMO_LOG"
+  exit 1;
+fi
+
 POMO_LOG_FILE="$POMO_LOG/pomodoro_$day.log"
 
 # PROCESS OPTION
@@ -134,11 +132,13 @@ POMO_LOG_FILE="$POMO_LOG/pomodoro_$day.log"
 while getopts "hlL:d:g:c:" Option
   do
     case $Option in
+    # list today
     'l')
       echo $POMO_LOG_FILE
 		  [ -f "$POMO_LOG_FILE" ] && cat "$POMO_LOG_FILE" || echo "No pomos today"
 		  exit 0
 		  ;;
+    # list date
 	  'L')
 		  if [ -f "$POMO_LOG/pomodoro_$OPTARG.log" ] 
 			then 
@@ -149,7 +149,8 @@ while getopts "hlL:d:g:c:" Option
 				exit 1
 			fi
       ;;
-	  'd')
+    # specific file configuration
+    'd')
 		  if [ -f "$OPTARG" ] 
 			then
 				POMO_CONFIG=$OPTARG 
@@ -158,6 +159,7 @@ while getopts "hlL:d:g:c:" Option
 				exit 1
 			fi
 		  ;;
+    # specific log directory
 	  'g')
 		  if [ -d "$OPTARG" ]
 			then 
@@ -167,15 +169,23 @@ while getopts "hlL:d:g:c:" Option
 				exit 1
 			fi
 		  ;;
+    # show help message
 	  'h')
 		  help
 		  exit 0
 		  ;;
+    #specific Google calendar name
     'c')
       cal=$OPTARG
       ;;
     esac
   done
+
+
+# ARGUMENTS
+#----------
+for last; do true; done
+eventname=$last
 
 # START POMODORO
 #------------------
@@ -202,16 +212,16 @@ fi
 [ $(( $today_pomos % 4 )) -eq 0 ] && break_min=$long_break_min || break_min=$short_break_min
 
 # if enabled shows growl pomodoro end notification
-[ "$growl_enabled" = "true" ] && growlnotify --image $POMO_ICON -s -n $POMO_SH -m "$eventname pomodoro finished. Take a $break_min minutes break"
+[ $growl_enabled == "true" ] && growlnotify --image $POMO_ICON -s  -m "$eventname pomodoro finished. Take a $break_min minutes break"
 
 # take a long or short break
 echo "Start $break_min minutes break or skip? ['b','s']"
-read reply
+read -s -n 1 reply
 if [ $reply = 'b' ]
 then
   timer $break_min
   # if enabled shows break end notification
-  [ "$growl_enabled" = "true" ] && growlnotify --image $POMO_ICON -s -n $POMO_SH -m "break finished. Back to work"
+  [ $growl_enabled == "true" ] && growlnotify --image $POMO_ICON -s -n $POMO_SH -m "break finished. Back to work"
 fi
 
 exit 1
