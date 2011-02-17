@@ -50,7 +50,7 @@ Extension
 
 Google calendar
 ---------------
-Pomosh can save every completed pomodoro on Google calendar. This feature require  GoogleCL and need to be enabled in pomosh.config configuration file. More information on GoogleCl are available on http://code.google.com/p/googlecl/
+Pomosh can save every completed pomodoro on Google calendar. This feature require  GoogleCL and need to be enabled in pomosh.cfg configuration file. More information on GoogleCl are available on http://code.google.com/p/googlecl/
 Dedicated calendar can be associated with pomosh using the 'c' option. 
 Example:
    
@@ -61,5 +61,6 @@ the above command will generate a calendar event with the name "some task" in th
 
 Growl
 -----
-On Mac OSX pomosh can post Growl notification about pomodoro completion and long or short break completion. This feature require growlnotify and need to be enabled in pomadsh.config configuration file.
+On Mac OSX pomosh can post Growl notifications about pomodoro completion and long or short break completion. This feature require growlnotify and need to be enabled in pomadsh.cfg configuration file.
+More 
 http://growl.info/extras.php
