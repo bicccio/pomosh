@@ -134,7 +134,6 @@ while getopts "hlL:d:g:c:" Option
     case $Option in
     # list today
     'l')
-      echo $POMO_LOG_FILE
 		  [ -f "$POMO_LOG_FILE" ] && cat "$POMO_LOG_FILE" || echo "No pomos today"
 		  exit 0
 		  ;;
