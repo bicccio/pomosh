@@ -22,9 +22,6 @@ long_break_min=15
 calendar_enabled="false"
 growl_enabled="false"
 
-time=$(date "+%H:%M")
-day=$(date "+%Y%m%d")
-
 online_usage="$POMO_SH [-lh] [-L DATE] [-d CONFIG_FILE] [-c calendar] 
 			  -g [LOG_DIRECTORY] [pomodoro_name]"
 
@@ -125,6 +122,10 @@ then
   exit 1;
 fi
 
+# GET TIME AND TODAY DATE
+time=$(date "+%H:%M")
+day=$(date "+%Y%m%d")
+
 POMO_LOG_FILE="$POMO_LOG/pomodoro_$day.log"
 
 # PROCESS OPTION
@@ -190,7 +191,7 @@ eventname=$last
 #------------------
 timer $pomodoro_min 
 
-# WRITE POMODORO REMINDER AFTER EACH POMODORO
+# WRITE REMINDER AFTER EACH POMODORO
 if [ -f $POMO_LOG_FILE ]
 then
   rows=$(wc -l $POMO_LOG_FILE | awk '{print $1}')
@@ -204,8 +205,16 @@ echo -e "$today_pomos) \t $time \t $eventname" >> $POMO_LOG_FILE
 if [ "$calendar_enabled" = "true" ]
 then
   calendar="pomosh: $eventname today at $time for 25 minutes"
-  ERORR=$( google calendar add --cal "$cal" "$calendar" 2>&1 )
-  # some code to catch error and retry to post event
+  ERROR=' '
+  i=0
+  #three attemp to post calendar event
+  while [ "$ERROR" -a $i -lt 3  ]; do
+    let i=$i+1
+    #ERORR=$(google calendar add --cal "$cal" "$calendar" 2>&1)
+    ERROR=$(google calendar add --cal "$cal" "$calendar" 2>&1)
+    echo $ERROR
+  done 
+  echo $i 
 fi
 
 # every 4 pomodoro one long break
