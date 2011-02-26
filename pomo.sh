@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Set script name and full path early.
+# Set script name and full path.
 POMO_SH=$(basename "$0")
 POMO_PATH=$(dirname "$0")
 POMO_FULL_SH="$0"
@@ -11,24 +11,13 @@ POMO_HOME="$HOME/.pomosh"
 POMO_LOG="$POMO_HOME/pomos"
 POMO_CONFIG=$POMO_HOME"/pomosh.cfg"
 
-# DEFAULT TIME CONFIGURATION
-#----------------------
-pomodoro_min=25
-short_break_min=5
-long_break_min=15
-
-# EXTENSIONS
-#-----------
-calendar_enabled="false"
-growl_enabled="false"
-
-online_usage="$POMO_SH [-lh] [-L DATE] [-d CONFIG_FILE] [-c calendar] 
+oneline_usage="$POMO_SH [-lh] [-L DATE] [-d CONFIG_FILE] [-c calendar] 
 			  -g [LOG_DIRECTORY] [pomodoro_name]"
 
 usage()
 {
   cat <<-EndUsage
-  Usage: $online_usage
+  Usage: $oneline_usage
   Try "$POMO_SH -h" for more information.
 EndUsage
   exit 1
@@ -39,7 +28,7 @@ EndUsage
 help()
 {
     cat <<-EndHelp
-      Usage: $online_usage
+      Usage: $oneline_usage
 
       Example: $POMO_SH "write exhaustive help guide"
 
@@ -78,29 +67,29 @@ EndHelp
 
 timer()
 {
-  min=$1
-  bar=$(draw_bar $1 $1)
-  while [ $min -gt 0 ]; do
-    for (( sec=60; sec>0; sec--)); do
-      [ $sec == 59 ] && {
-        let min=$min-1
-        bar=$(draw_bar $min $1)
-      }
-      [ $sec == 60 ] && print_sec='00' || print_sec=`echo $sec | sed s/^[0-9]$/0\&/`
-      print_min=`echo $min | sed s/^[0-9]$/0\&/`
-      printf "$print_min:$print_sec $bar \r"
-      sleep 1 &
-      wait
+    min=$1
+    bar=$(draw_bar $1 $1)
+    while [ $min -gt 0 ]; do
+        for (( sec=60; sec>0; sec--)); do
+            [ $sec == 59 ] && {
+                let min=$min-1
+                bar=$(draw_bar $min $1)
+            }
+            [ $sec == 60 ] && print_sec='00' || print_sec=`echo $sec | sed s/^[0-9]$/0\&/`
+            print_min=`echo $min | sed s/^[0-9]$/0\&/`
+            printf "$print_min:$print_sec $bar \r"
+            sleep 1 &
+            wait
+        done
     done
-  done
 }
 
 draw_bar()
 {
-  for (( i=0;i<$2+1;i++)); do
-    [ $i -le $1 ] && b=$b"="|| b=$b"-"
-  done
-  echo '|'$b'|'
+    for (( i=0;i<$2+1;i++)); do
+        [ $i -le $1 ] && b=$b"="|| b=$b"-"
+    done
+    echo '|'$b'|'
 }
 
 
@@ -112,14 +101,14 @@ source $POMO_CONFIG
 
 if [ ! -f "$POMO_CONFIG" ]
 then
-  echo "Fatal Error: Cannot read configuration file $POMO_CONFIG"
-  exit 1;
+    echo "Fatal Error: Cannot read configuration file $POMO_CONFIG"
+    exit 1;
 fi
 
 if [ ! -d $POMO_LOG ]
 then
-  echo echo "Fatal Error: Cannot write in log directory $POMO_LOG"
-  exit 1;
+    echo echo "Fatal Error: Cannot write in log directory $POMO_LOG"
+    exit 1;
 fi
 
 # GET TIME AND TODAY DATE
@@ -131,56 +120,66 @@ POMO_LOG_FILE="$POMO_LOG/pomodoro_$day.log"
 # PROCESS OPTION
 #-------------------------------------------------
 while getopts "hlL:d:g:c:" Option
-  do
+do
     case $Option in
     # list today
     'l')
-		  [ -f "$POMO_LOG_FILE" ] && cat "$POMO_LOG_FILE" || echo "No pomos today"
-		  exit 0
-		  ;;
+        [ -f "$POMO_LOG_FILE" ] && cat "$POMO_LOG_FILE" || echo "No pomos today"
+        exit 0
+    ;;
     # list date
-	  'L')
-		  if [ -f "$POMO_LOG/pomodoro_$OPTARG.log" ] 
-			then 
-			  cat "$POMO_LOG/pomodoro_$OPTARG.log" 
-				exit 0
-			else
-			  echo "No pomos in this date"
-				exit 1
-			fi
-      ;;
+    'L')
+        if [ -f "$POMO_LOG/pomodoro_$OPTARG.log" ] 
+        then 
+        cat "$POMO_LOG/pomodoro_$OPTARG.log" 
+            exit 0
+        else
+          echo "No pomos in this date"
+            exit 1
+        fi
+    ;;
     # specific file configuration
     'd')
-		  if [ -f "$OPTARG" ] 
-			then
-				POMO_CONFIG=$OPTARG 
-			else
-				echo echo "specified configuration file  doesn't exists"
-				exit 1
-			fi
-		  ;;
+        if [ -f "$OPTARG" ] 
+        then
+            POMO_CONFIG=$OPTARG 
+        else
+            echo echo "specified configuration file  doesn't exists"
+            exit 1
+        fi
+    ;;
     # specific log directory
-	  'g')
-		  if [ -d "$OPTARG" ]
-			then 
-				POMO_LOG=$OPTARG
-			else
-				echo "specified log directory doesn't exists"
-				exit 1
-			fi
-		  ;;
+    'g')
+        if [ -d "$OPTARG" ]
+        then 
+            POMO_LOG=$OPTARG
+        else
+            echo "specified log directory doesn't exists"
+            exit 1
+        fi
+    ;;
     # show help message
-	  'h')
-		  help
-		  exit 0
-		  ;;
+    'h')
+        help
+        exit 0
+    ;;
     #specific Google calendar name
     'c')
-      cal=$OPTARG
-      ;;
+        cal=$OPTARG
+    ;;
     esac
-  done
+done
 
+# DEFAULT TIME CONFIGURATION
+#----------------------
+pomodoro_min=${pomodoro_min:-25}
+short_break=${short_break:-5}
+long_break=${long_break:-15}
+
+# EXTENSIONS
+#-----------
+calendar_enabled=${calendar_enabled:-"false"}
+growl_enabled=${growl_enabled:-"false"}
 
 # ARGUMENTS
 #----------
@@ -194,27 +193,25 @@ timer $pomodoro_min
 # WRITE REMINDER AFTER EACH POMODORO
 if [ -f $POMO_LOG_FILE ]
 then
-  rows=$(wc -l $POMO_LOG_FILE | awk '{print $1}')
-  let today_pomos=$rows+1
+    rows=$(wc -l $POMO_LOG_FILE | awk '{print $1}')
+    let today_pomos=$rows+1
 else
-  today_pomos=1
+    today_pomos=1
 fi
 echo -e "$today_pomos) \t $time \t $eventname" >> $POMO_LOG_FILE
 
 # if enabled create new google calendar event
 if [ "$calendar_enabled" = "true" ]
 then
-  calendar="pomosh: $eventname today at $time for 25 minutes"
-  ERROR=' '
-  i=0
-  #three attemp to post calendar event
-  while [ "$ERROR" -a $i -lt 3  ]; do
-    let i=$i+1
-    #ERORR=$(google calendar add --cal "$cal" "$calendar" 2>&1)
-    ERROR=$(google calendar add --cal "$cal" "$calendar" 2>&1)
-    echo $ERROR
-  done 
-  echo $i 
+    calendar="pomosh: $eventname today at $time for 25 minutes"
+    ERROR=' '
+    i=0
+    #three attemp to post calendar event
+    while [ "$ERROR" -a $i -lt 3  ]; do
+        let i=$i+1
+        ERROR=$(google calendar add --cal "$cal" "$calendar" 2>&1)
+    done 
+    echo $i 
 fi
 
 # every 4 pomodoro one long break
@@ -228,9 +225,9 @@ echo "Start $break_min minutes break or skip? ['b','s']"
 read -s -n 1 reply
 if [ $reply = 'b' ]
 then
-  timer $break_min
-  # if enabled shows break end notification
-  [ $growl_enabled == "true" ] && growlnotify --image $POMO_ICON -s -n $POMO_SH -m "break finished. Back to work"
+    timer $break_min
+    # if enabled shows break end notification
+    [ $growl_enabled == "true" ] && growlnotify --image $POMO_ICON -s -n $POMO_SH -m "break finished. Back to work"
 fi
 
 exit 1
