@@ -203,7 +203,7 @@ echo -e "$today_pomos) \t $time \t $eventname" >> $POMO_LOG_FILE
 # if enabled create new google calendar event
 if [ "$calendar_enabled" = "true" ]
 then
-    calendar="pomosh: $eventname today at $time for 25 minutes"
+    calendar="$eventname today at $time for 25 minutes"
     ERROR=' '
     i=0
     #three attemp to post calendar event
