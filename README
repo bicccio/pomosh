@@ -32,17 +32,13 @@ Options:
             print this help.
 
 Configuration:
-       POMO_HOME		the Pomosh home directory.
-       POMO_LOG		        the logs directory.
-       POMO_CONFIG=CONFIG_FILE  same as option -d CONFIG_FILE.
+       POMO_HOME		the Pomosh home directory (Default $HOME/.pomosh).
+       POMO_LOG		        the logs directory (Defaul $HOME/.pomosh/log/).
+       POMO_CONFIG=CONFIG_FILE  same as option -d CONFIG_FILE (Default $HOME/.pomosh/pomosh.config).
 
        pomodoro_min		pomodoro duration in minutes (default 25).
        short_break_min		short break duration in minutes (default 5).
        long_break_min        	long break duration in minutes (default 15).
-
-       calendar_enabled		enable Google calendar synchronization. (default='false').
-       growl_enabled            enable Growl notifycations. (default='false').
-
 
 -------------
 Extension
@@ -50,17 +46,23 @@ Extension
 
 Google calendar
 ---------------
-Pomosh can save every completed pomodoro on Google calendar. This feature require  GoogleCL and need to be enabled in pomosh.cfg configuration file. More information on GoogleCl are available on http://code.google.com/p/googlecl/
+Pomosh can save every completed pomodoro on Google calendar. This feature require GoogleCL and need to be enabled in pomosh.cfg configuration file adding this entry:
+
+       calendar_enabled		
+
+More information on GoogleCL are available on http://code.google.com/p/googlecl/
 Dedicated calendar can be associated with pomosh using the 'c' option. 
 Example:
 
-   pomosh -c "my pomosh" "some task"
+       pomosh -c "my pomosh" "some task"
 
 the above command will generate a calendar event with the name "some task" in the
 "my pomosh" calendar. If 'c' option is omitted the default calendar will be used.
 
 Growl
 -----
-On Mac OSX pomosh can post Growl notifications about pomodoro completion and long or short break completion. This feature require growlnotify and need to be enabled in pomosh.cfg configuration file.
-More on growlnotify here:
-http://growl.info/extras.php
+On Mac OSX pomosh can post Growl notifications about pomodoro completion and long or short break completion. This feature require growlnotify and need to be enabled in pomosh.cfg configuration file adding this entry:
+
+       growl_enabled  
+
+More on growlnotify here: http://growl.info/extras.php
