@@ -117,8 +117,8 @@ day=$(date "+%Y%m%d")
 
 POMO_LOG_FILE="$POMO_LOG/pomodoro_$day.log"
 
-# PROCESS OPTIONs
-#-------------------------------------------------
+# PROCESS OPTIONS
+#----------------
 while getopts "hlL:d:g:c:" Option
 do
     case $Option in
@@ -171,7 +171,7 @@ do
 done
 
 # DEFAULT TIME CONFIGURATION
-#----------------------
+#---------------------------
 pomodoro_min=${pomodoro_min:-25}
 short_break=${short_break:-5}
 long_break=${long_break:-15}
@@ -187,7 +187,7 @@ for last; do true; done
 eventname=$last
 
 # START POMODORO
-#------------------
+#---------------
 timer $pomodoro_min 
 
 # WRITE REMINDER AFTER EACH POMODORO
