@@ -62,8 +62,8 @@ EndHelp
     exit 0
 }
 
-# COUNTDOWN TIMER FUNCTION
-#------------------------
+# COUNTDOWN FUNCTION
+#--------------------
 
 timer()
 {
@@ -111,13 +111,13 @@ then
     exit 1;
 fi
 
-# GET TIME AND TODAY DATE
+# GET TIME AND DATE
 time=$(date "+%H:%M")
 day=$(date "+%Y%m%d")
 
 POMO_LOG_FILE="$POMO_LOG/pomodoro_$day.log"
 
-# PROCESS OPTION
+# PROCESS OPTIONs
 #-------------------------------------------------
 while getopts "hlL:d:g:c:" Option
 do
