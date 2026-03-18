@@ -1,6 +1,6 @@
 import { parseCli } from './cli.js';
-import { loadConfig, ensureDirectories } from './config.js';
-import { listPomodoros, countTodayPomos, appendPomodoro } from './logger.js';
+import { loadConfig, saveConfig, ensureDirectories, Config } from './config.js';
+import { countTodayPomos, appendPomodoro } from './logger.js';
 import {
   setupScreen,
   teardownScreen,
@@ -27,10 +27,11 @@ function currentTime(): string {
 const MENU_OPTIONS = [
   'Start a new pomodoro',
   "View today's pomodoros",
+  'Settings',
   'Exit',
 ] as const;
 
-async function showMenu(): Promise<0 | 1 | 2> {
+async function showMenu(): Promise<0 | 1 | 2 | 3> {
   let idx = 0;
 
   while (true) {
@@ -43,14 +44,109 @@ async function showMenu(): Promise<0 | 1 | 2> {
       '',
       ...opts,
       '',
-      `  ${DIM}[↑↓] navigate   [enter] select${RESET}`,
+      `  ${DIM}[↑↓] navigate   [enter] select   [q] quit${RESET}`,
     ));
 
     const key = await readKey();
     if (key === '\x1b[A' && idx > 0)                        idx--;
     else if (key === '\x1b[B' && idx < MENU_OPTIONS.length - 1) idx++;
-    else if (key === '\r' || key === '\n')                   return idx as 0 | 1 | 2;
-    else if (key === 'q' || key === 'Q')                     return 2;
+    else if (key === '\r' || key === '\n')                   return idx as 0 | 1 | 2 | 3;
+    else if (key === 'q' || key === 'Q')                     return 3;
+  }
+}
+
+async function showSettings(config: Config): Promise<void> {
+  const fields = [
+    { label: 'Pomodoro',    key: 'pomodoroMin'   as keyof Config },
+    { label: 'Short break', key: 'shortBreakMin' as keyof Config },
+    { label: 'Long break',  key: 'longBreakMin'  as keyof Config },
+  ];
+
+  const original = {
+    pomodoroMin:   config.pomodoroMin,
+    shortBreakMin: config.shortBreakMin,
+    longBreakMin:  config.longBreakMin,
+  };
+
+  let idx = 0;
+  let editing = false;
+  let editBuf = '';
+
+  const renderRow = (i: number, inEdit: boolean, buf: string) => {
+    const field = fields[i];
+    const value = config[field.key] as number;
+    const label = field.label.padEnd(12);
+    if (inEdit) {
+      return `  \x1b[1m❯\x1b[0m ${label} [${buf}] min`;
+    }
+    return `  \x1b[1m❯\x1b[0m ${label} ${value} min`;
+  };
+
+  const renderIdleRow = (i: number) => {
+    const field = fields[i];
+    const value = config[field.key] as number;
+    const label = field.label.padEnd(12);
+    return `    ${DIM}${label} ${value} min${RESET}`;
+  };
+
+  while (true) {
+    const rows = fields.map((_, i) => {
+      if (i === idx) return renderRow(i, editing, editBuf);
+      return renderIdleRow(i);
+    });
+
+    const hint = editing
+      ? `  ${DIM}[enter] confirm   [esc] cancel${RESET}`
+      : `  ${DIM}[↑↓] navigate   [enter] edit   [esc] back${RESET}`;
+
+    process.stdout.write(screen(
+      '',
+      '  Settings',
+      '',
+      ...rows,
+      '',
+      hint,
+    ));
+
+    if (editing) process.stdout.write(SHOW_CURSOR);
+
+    const key = await readKey();
+
+    if (editing) process.stdout.write(HIDE_CURSOR);
+
+    if (editing) {
+      if (key === '\r' || key === '\n') {
+        if (editBuf !== '') {
+          const parsed = parseInt(editBuf, 10);
+          if (!isNaN(parsed) && parsed > 0) {
+            (config as Record<string, unknown>)[fields[idx].key] = parsed;
+          }
+        }
+        editing = false;
+        editBuf = '';
+      } else if (key === '\x1b') {
+        editing = false;
+        editBuf = '';
+      } else if (key === '\x7f' || key === '\b') {
+        editBuf = editBuf.slice(0, -1);
+      } else if (key >= '0' && key <= '9') {
+        editBuf += key;
+      }
+    } else {
+      if (key === '\x1b[A' && idx > 0)                    idx--;
+      else if (key === '\x1b[B' && idx < fields.length - 1) idx++;
+      else if (key === '\r' || key === '\n') {
+        editing = true;
+        editBuf = '';
+      } else if (key === '\x1b') {
+        const changed =
+          config.pomodoroMin   !== original.pomodoroMin   ||
+          config.shortBreakMin !== original.shortBreakMin ||
+          config.longBreakMin  !== original.longBreakMin;
+        if (changed) await saveConfig(config);
+        return;
+      }
+    }
   }
 }
 
@@ -77,6 +173,64 @@ async function showTextInput(prompt: string, placeholder: string): Promise<strin
   }
 }
 
+async function showLog(config: Config): Promise<void> {
+  const { existsSync } = await import('fs');
+  const { readFile } = await import('fs/promises');
+  const { join } = await import('path');
+
+  const now = new Date();
+  const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+  const filePath = join(config.logDir, `pomodoro_${stamp}.log`);
+
+  let lines: string[];
+  if (!existsSync(filePath)) {
+    lines = [`  ${DIM}No pomos today.${RESET}`];
+  } else {
+    const content = await readFile(filePath, 'utf-8');
+    lines = content.split('\n').filter(l => l.trim() !== '').map(l => `  ${l}`);
+  }
+
+  process.stdout.write(screen(
+    '',
+    "  Today's pomodoros",
+    '',
+    ...lines,
+    '',
+    `  ${DIM}[any key] back${RESET}`,
+  ));
+
+  await readKey();
+}
+
+async function runSession(taskName: string, config: Config): Promise<'quit' | 'menu'> {
+  while (true) {
+    const sessionNumber = (await countTodayPomos(config.logDir)) + 1;
+    const breakMin = sessionNumber % 4 === 0 ? config.longBreakMin : config.shortBreakMin;
+
+    const result = await runTimer(config.pomodoroMin, sessionNumber, taskName, false);
+
+    if (result === 'cancelled') {
+      const next = await askAfterCancel();
+      if (next === 'quit') return 'quit';
+      if (next === 'menu') return 'menu';
+      continue;
+    }
+
+    await appendPomodoro(config.logDir, taskName, currentTime());
+
+    const afterPomo = await askAfterPomodoro(sessionNumber, taskName, breakMin);
+    if (afterPomo === 'quit') return 'quit';
+    if (afterPomo === 'menu') return 'menu';
+
+    if (afterPomo === 'break') {
+      await runTimer(breakMin, sessionNumber, taskName, true);
+      const afterBreak = await askAfterBreak();
+      if (afterBreak === 'quit') return 'quit';
+      if (afterBreak === 'menu') return 'menu';
+    }
+  }
+}
+
 // ─── main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -92,50 +246,46 @@ async function main() {
   // Fullscreen from the very start
   setupScreen();
 
-  let taskName = cliTaskName;
-
-  if (!taskName) {
-    const choice = await showMenu();
-
-    if (choice === 2) { teardownScreen(); process.exit(0); }
-
-    if (choice === 1) {
+  // If task was passed via CLI, skip the menu entirely
+  if (cliTaskName) {
+    const outcome = await runSession(cliTaskName, config);
+    if (outcome === 'quit') {
       teardownScreen();
-      await listPomodoros(config.logDir);
-      process.exit(0);
+      process.stdout.write('\n  Great work! 🍅\n\n');
+      return;
     }
+    // 'menu' → fall through to the interactive menu loop below
+  }
+
+  // Main loop: menu → action → back to menu
+  while (true) {
+    let choice: 0 | 1 | 2 | 3;
+
+    do {
+      choice = await showMenu();
+
+      if (choice === 3) { teardownScreen(); process.exit(0); }
+
+      if (choice === 1) {
+        await showLog(config);
+      }
+
+      if (choice === 2) {
+        await showSettings(config);
+      }
+    } while (choice !== 0);
 
     const name = await showTextInput('Task name', 'e.g. writing the readme');
-    if (name === null) { teardownScreen(); process.exit(0); }
-    taskName = name;
-  }
+    if (name === null) continue; // Ctrl+C → back to menu
 
-  while (true) {
-    const sessionNumber = (await countTodayPomos(config.logDir)) + 1;
-    const breakMin = sessionNumber % 4 === 0 ? config.longBreakMin : config.shortBreakMin;
-
-    const result = await runTimer(config.pomodoroMin, sessionNumber, taskName, false);
-
-    if (result === 'cancelled') {
-      const next = await askAfterCancel();
-      if (next === 'quit') break;
-      continue;
+    const outcome = await runSession(name, config);
+    if (outcome === 'quit') {
+      teardownScreen();
+      process.stdout.write('\n  Great work! 🍅\n\n');
+      return;
     }
-
-    await appendPomodoro(config.logDir, taskName, currentTime());
-
-    const afterPomo = await askAfterPomodoro(sessionNumber, taskName, breakMin);
-    if (afterPomo === 'quit') break;
-
-    if (afterPomo === 'break') {
-      await runTimer(breakMin, sessionNumber, taskName, true);
-      const afterBreak = await askAfterBreak();
-      if (afterBreak === 'quit') break;
-    }
+    // 'menu' → loop back to showMenu
   }
-
-  teardownScreen();
-  process.stdout.write('\n  Great work! 🍅\n\n');
 }
 
 main().catch((err) => { console.error(err); process.exit(1); });

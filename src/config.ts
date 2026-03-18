@@ -1,4 +1,4 @@
-import { readFile, mkdir } from 'fs/promises';
+import { readFile, writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
@@ -22,6 +22,15 @@ const DEFAULT_CONFIG: Config = {
 export async function ensureDirectories(logDir: string): Promise<void> {
   await mkdir(join(homedir(), '.pomosh'), { recursive: true });
   await mkdir(logDir, { recursive: true });
+}
+
+export async function saveConfig(config: Config): Promise<void> {
+  const content = [
+    `pomodoro_min = ${config.pomodoroMin}`,
+    `short_break_min = ${config.shortBreakMin}`,
+    `long_break_min = ${config.longBreakMin}`,
+  ].join('\n') + '\n';
+  await writeFile(config.configPath, content, 'utf-8');
 }
 
 export async function loadConfig(configPath?: string): Promise<Config> {
