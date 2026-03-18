@@ -156,48 +156,51 @@ export async function askAfterPomodoro(
   sessionNumber: number,
   taskName: string,
   breakMin: number,
-): Promise<'break' | 'next' | 'quit'> {
+): Promise<'break' | 'next' | 'quit' | 'menu'> {
   process.stdout.write(screen(
     '',
     `  ✓  Pomodoro #${sessionNumber} complete!`,
     '',
-    `  [b] start ${breakMin} min break   [enter] next pomodoro   [q] quit`,
+    `  [b] start ${breakMin} min break   [enter] next pomodoro   [m] menu   [q] quit`,
   ));
   process.stdout.write(SHOW_CURSOR);
   while (true) {
     const key = await readKey();
     if (key === 'b' || key === 'B')                  { process.stdout.write(HIDE_CURSOR); return 'break'; }
     if (key === '\r' || key === '\n' || key === ' ') { process.stdout.write(HIDE_CURSOR); return 'next'; }
+    if (key === 'm' || key === 'M')                  { process.stdout.write(HIDE_CURSOR); return 'menu'; }
     if (key === 'q' || key === 'Q')                  return 'quit';
   }
 }
 
-export async function askAfterBreak(): Promise<'next' | 'quit'> {
+export async function askAfterBreak(): Promise<'next' | 'quit' | 'menu'> {
   process.stdout.write(screen(
     '',
     '  ✓  Break complete!',
     '',
-    '  [enter] next pomodoro   [q] quit',
+    '  [enter] next pomodoro   [m] menu   [q] quit',
   ));
   process.stdout.write(SHOW_CURSOR);
   while (true) {
     const key = await readKey();
     if (key === '\r' || key === '\n' || key === ' ') { process.stdout.write(HIDE_CURSOR); return 'next'; }
+    if (key === 'm' || key === 'M')                  { process.stdout.write(HIDE_CURSOR); return 'menu'; }
     if (key === 'q' || key === 'Q')                  return 'quit';
   }
 }
 
-export async function askAfterCancel(): Promise<'retry' | 'quit'> {
+export async function askAfterCancel(): Promise<'retry' | 'quit' | 'menu'> {
   process.stdout.write(screen(
     '',
     '  Pomodoro cancelled.',
     '',
-    '  [enter] start over   [q] quit',
+    '  [enter] start over   [m] menu   [q] quit',
   ));
   process.stdout.write(SHOW_CURSOR);
   while (true) {
     const key = await readKey();
     if (key === '\r' || key === '\n' || key === ' ') { process.stdout.write(HIDE_CURSOR); return 'retry'; }
+    if (key === 'm' || key === 'M')                  { process.stdout.write(HIDE_CURSOR); return 'menu'; }
     if (key === 'q' || key === 'Q')                  return 'quit';
   }
 }
