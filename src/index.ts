@@ -10,6 +10,8 @@ import {
   askAfterPomodoro,
   askAfterBreak,
   askAfterCancel,
+  sendNotification,
+  previewSound,
 } from './timer.js';
 
 const SHOW_CURSOR = '\x1b[?25h';
@@ -55,17 +57,28 @@ async function showMenu(): Promise<0 | 1 | 2 | 3> {
   }
 }
 
+const NOTIFICATION_SOUNDS = ['default', 'Basso', 'Blow', 'Bottle', 'Frog', 'Funk', 'Glass', 'Hero', 'Morse', 'Ping', 'Pop', 'Purr', 'Sosumi', 'Submarine', 'Tink'];
+
 async function showSettings(config: Config): Promise<void> {
-  const fields = [
-    { label: 'Pomodoro',    key: 'pomodoroMin'   as keyof Config },
-    { label: 'Short break', key: 'shortBreakMin' as keyof Config },
-    { label: 'Long break',  key: 'longBreakMin'  as keyof Config },
+  type NumericField = { kind: 'number'; label: string; key: 'pomodoroMin' | 'shortBreakMin' | 'longBreakMin' };
+  type BoolField    = { kind: 'bool';   label: string; key: 'notificationsEnabled' };
+  type CycleField   = { kind: 'cycle';  label: string; key: 'notificationSound'; options: string[] };
+  type Field = NumericField | BoolField | CycleField;
+
+  const fields: Field[] = [
+    { kind: 'number', label: 'Pomodoro',       key: 'pomodoroMin',         },
+    { kind: 'number', label: 'Short break',    key: 'shortBreakMin',       },
+    { kind: 'number', label: 'Long break',     key: 'longBreakMin',        },
+    { kind: 'bool',   label: 'Notifications',  key: 'notificationsEnabled' },
+    { kind: 'cycle',  label: 'Sound',          key: 'notificationSound',   options: NOTIFICATION_SOUNDS },
   ];
 
   const original = {
-    pomodoroMin:   config.pomodoroMin,
-    shortBreakMin: config.shortBreakMin,
-    longBreakMin:  config.longBreakMin,
+    pomodoroMin:          config.pomodoroMin,
+    shortBreakMin:        config.shortBreakMin,
+    longBreakMin:         config.longBreakMin,
+    notificationsEnabled: config.notificationsEnabled,
+    notificationSound:    config.notificationSound,
   };
 
   let idx = 0;
@@ -74,19 +87,33 @@ async function showSettings(config: Config): Promise<void> {
 
   const renderRow = (i: number, inEdit: boolean, buf: string) => {
     const field = fields[i];
-    const value = config[field.key] as number;
-    const label = field.label.padEnd(12);
-    if (inEdit) {
-      return `  \x1b[1m❯\x1b[0m ${label} [${buf}] min`;
+    const label = field.label.padEnd(14);
+    if (field.kind === 'bool') {
+      const val = config[field.key] ? 'on' : 'off';
+      return `  \x1b[1m❯\x1b[0m ${label} ${val}`;
     }
-    return `  \x1b[1m❯\x1b[0m ${label} ${value} min`;
+    if (field.kind === 'cycle') {
+      const opts = field.options;
+      const ci = opts.indexOf(config[field.key]);
+      const prev = opts[(ci - 1 + opts.length) % opts.length];
+      const next = opts[(ci + 1) % opts.length];
+      return `  \x1b[1m❯\x1b[0m ${label} ${DIM}${prev}${RESET} \x1b[1m${config[field.key]}\x1b[0m ${DIM}${next}${RESET}`;
+    }
+    if (inEdit) return `  \x1b[1m❯\x1b[0m ${label} [${buf}] min`;
+    return `  \x1b[1m❯\x1b[0m ${label} ${config[field.key]} min`;
   };
 
   const renderIdleRow = (i: number) => {
     const field = fields[i];
-    const value = config[field.key] as number;
-    const label = field.label.padEnd(12);
-    return `    ${DIM}${label} ${value} min${RESET}`;
+    const label = field.label.padEnd(14);
+    if (field.kind === 'bool') {
+      const val = config[field.key] ? 'on' : 'off';
+      return `    ${DIM}${label} ${val}${RESET}`;
+    }
+    if (field.kind === 'cycle') {
+      return `    ${DIM}${label} ${config[field.key]}${RESET}`;
+    }
+    return `    ${DIM}${label} ${config[field.key]} min${RESET}`;
   };
 
   while (true) {
@@ -97,7 +124,7 @@ async function showSettings(config: Config): Promise<void> {
 
     const hint = editing
       ? `  ${DIM}[enter] confirm   [esc] cancel${RESET}`
-      : `  ${DIM}[↑↓] navigate   [enter] edit   [esc] back${RESET}`;
+      : `  ${DIM}[↑↓] navigate   [enter/←/→/space] edit   [esc] back${RESET}`;
 
     process.stdout.write(screen(
       '',
@@ -113,6 +140,37 @@ async function showSettings(config: Config): Promise<void> {
     const key = await readKey();
 
     if (editing) process.stdout.write(HIDE_CURSOR);
+
+    const currentField = fields[idx];
+
+    const hasChanges = () =>
+      config.pomodoroMin          !== original.pomodoroMin          ||
+      config.shortBreakMin        !== original.shortBreakMin        ||
+      config.longBreakMin         !== original.longBreakMin         ||
+      config.notificationsEnabled !== original.notificationsEnabled  ||
+      config.notificationSound    !== original.notificationSound;
+
+    if ((currentField.kind === 'bool' || currentField.kind === 'cycle') && !editing) {
+      if (key === '\x1b[A' && idx > 0)                 { idx--; continue; }
+      if (key === '\x1b[B' && idx < fields.length - 1) { idx++; continue; }
+      if (key === '\x1b') {
+        if (hasChanges()) await saveConfig(config);
+        return;
+      }
+      if (currentField.kind === 'bool') {
+        if (key === ' ' || key === '\r' || key === '\n' || key === '\x1b[C' || key === '\x1b[D') {
+          config.notificationsEnabled = !config.notificationsEnabled;
+        }
+      } else {
+        const opts = currentField.options;
+        const ci = opts.indexOf(config[currentField.key]);
+        if (key === '\x1b[C' || key === ' ')  config.notificationSound = opts[(ci + 1) % opts.length];
+        else if (key === '\x1b[D')            config.notificationSound = opts[(ci - 1 + opts.length) % opts.length];
+        else { continue; }
+        previewSound(config.notificationSound);
+      }
+      continue;
+    }
 
     if (editing) {
       if (key === '\r' || key === '\n') {
@@ -139,11 +197,7 @@ async function showSettings(config: Config): Promise<void> {
         editing = true;
         editBuf = '';
       } else if (key === '\x1b') {
-        const changed =
-          config.pomodoroMin   !== original.pomodoroMin   ||
-          config.shortBreakMin !== original.shortBreakMin ||
-          config.longBreakMin  !== original.longBreakMin;
-        if (changed) await saveConfig(config);
+        if (hasChanges()) await saveConfig(config);
         return;
       }
     }
@@ -217,6 +271,7 @@ async function runSession(taskName: string, config: Config): Promise<'quit' | 'm
     }
 
     await appendPomodoro(config.logDir, taskName, currentTime());
+    sendNotification(config.notificationsEnabled, 'pomosh 🍅', `Pomodoro #${sessionNumber} completato!`, config.notificationSound);
 
     const afterPomo = await askAfterPomodoro(sessionNumber, taskName, breakMin);
     if (afterPomo === 'quit') return 'quit';
@@ -224,6 +279,7 @@ async function runSession(taskName: string, config: Config): Promise<'quit' | 'm
 
     if (afterPomo === 'break') {
       await runTimer(breakMin, sessionNumber, taskName, true);
+      sendNotification(config.notificationsEnabled, 'pomosh', 'Pausa terminata, torna al lavoro!', config.notificationSound);
       const afterBreak = await askAfterBreak();
       if (afterBreak === 'quit') return 'quit';
       if (afterBreak === 'menu') return 'menu';
