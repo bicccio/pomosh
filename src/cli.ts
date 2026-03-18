@@ -5,7 +5,6 @@ export interface CliOptions {
   listDate?: string;
   config?: string;
   logDir?: string;
-  calendar?: string;
 }
 
 export interface ParsedCli {
@@ -25,7 +24,6 @@ export function parseCli(argv: string[]): ParsedCli {
     .option('-L <date>', 'list DATE pomos. DATE must be in YYYYMMDD format')
     .option('-d <config_file>', 'use CONFIG_FILE other than default ~/.pomosh/pomosh.cfg')
     .option('-g <log_directory>', 'use LOG_DIRECTORY other than default ~/.pomosh/pomos/')
-    .option('-c <calendar>', 'if enabled specify the calendar name')
     .helpOption('-h, --help', 'print this help')
     .addHelpText('after', `
 Configuration:
@@ -35,13 +33,10 @@ Configuration:
 
     pomodoro_min            pomodoro duration in minutes (default 25).
     short_break_min         short break duration in minutes (default 5).
-    long_break_min          long break duration in minutes (default 15).
-
-    calendar_enabled        enable Google calendar synchronization. (default='false')
-    growl_enabled           enable Growl notifications. (default='false')`)
+    long_break_min          long break duration in minutes (default 15).`)
     .parse(argv);
 
-  const opts = program.opts<{ l?: boolean; L?: string; d?: string; g?: string; c?: string }>();
+  const opts = program.opts<{ l?: boolean; L?: string; d?: string; g?: string }>();
   const args = program.args;
 
   return {
@@ -50,7 +45,6 @@ Configuration:
       listDate: opts.L,
       config: opts.d,
       logDir: opts.g,
-      calendar: opts.c,
     },
     taskName: args[0] ?? '',
   };

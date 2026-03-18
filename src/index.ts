@@ -1,6 +1,6 @@
 import { parseCli } from './cli.js';
 import { loadConfig, saveConfig, ensureDirectories, Config } from './config.js';
-import { countTodayPomos, appendPomodoro } from './logger.js';
+import { countTodayPomos, appendPomodoro, listPomodoros } from './logger.js';
 import {
   setupScreen,
   teardownScreen,
@@ -223,10 +223,12 @@ async function runSession(taskName: string, config: Config): Promise<'quit' | 'm
     if (afterPomo === 'menu') return 'menu';
 
     if (afterPomo === 'break') {
-      await runTimer(breakMin, sessionNumber, taskName, true);
-      const afterBreak = await askAfterBreak();
-      if (afterBreak === 'quit') return 'quit';
-      if (afterBreak === 'menu') return 'menu';
+      const breakResult = await runTimer(breakMin, sessionNumber, taskName, true);
+      if (breakResult === 'completed') {
+        const afterBreak = await askAfterBreak();
+        if (afterBreak === 'quit') return 'quit';
+        if (afterBreak === 'menu') return 'menu';
+      }
     }
   }
 }
