@@ -1,0 +1,56 @@
+import { readFile, mkdir } from 'fs/promises';
+import { existsSync } from 'fs';
+import { homedir } from 'os';
+import { join } from 'path';
+
+export interface Config {
+  pomodoroMin: number;
+  shortBreakMin: number;
+  longBreakMin: number;
+  logDir: string;
+  configPath: string;
+}
+
+const DEFAULT_CONFIG: Config = {
+  pomodoroMin: 25,
+  shortBreakMin: 5,
+  longBreakMin: 15,
+  logDir: join(homedir(), '.pomosh', 'pomos'),
+  configPath: join(homedir(), '.pomosh', 'pomosh.cfg'),
+};
+
+export async function ensureDirectories(logDir: string): Promise<void> {
+  await mkdir(join(homedir(), '.pomosh'), { recursive: true });
+  await mkdir(logDir, { recursive: true });
+}
+
+export async function loadConfig(configPath?: string): Promise<Config> {
+  const cfg: Config = { ...DEFAULT_CONFIG };
+
+  if (configPath) {
+    cfg.configPath = configPath;
+  }
+
+  if (!existsSync(cfg.configPath)) {
+    return cfg;
+  }
+
+  try {
+    const content = await readFile(cfg.configPath, 'utf-8');
+    for (const line of content.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eqIdx = trimmed.indexOf('=');
+      if (eqIdx === -1) continue;
+      const key = trimmed.slice(0, eqIdx).trim();
+      const val = trimmed.slice(eqIdx + 1).trim();
+      if (key === 'pomodoro_min') cfg.pomodoroMin = parseInt(val, 10) || cfg.pomodoroMin;
+      if (key === 'short_break_min') cfg.shortBreakMin = parseInt(val, 10) || cfg.shortBreakMin;
+      if (key === 'long_break_min') cfg.longBreakMin = parseInt(val, 10) || cfg.longBreakMin;
+    }
+  } catch {
+    // config file unreadable — use defaults
+  }
+
+  return cfg;
+}
