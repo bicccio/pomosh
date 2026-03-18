@@ -1,6 +1,6 @@
 import { parseCli } from './cli.js';
 import { loadConfig, saveConfig, ensureDirectories, Config } from './config.js';
-import { countTodayPomos, appendPomodoro, readRecords } from './logger.js';
+import { countTodayPomos, appendPomodoro, readRecords, listPomodoros } from './logger.js';
 import {
   setupScreen,
   teardownScreen,
@@ -177,7 +177,7 @@ async function showSettings(config: Config): Promise<void> {
         if (editBuf !== '') {
           const parsed = parseInt(editBuf, 10);
           if (!isNaN(parsed) && parsed > 0) {
-            (config as Record<string, unknown>)[fields[idx].key] = parsed;
+            (config as unknown as Record<string, unknown>)[fields[idx].key] = parsed;
           }
         }
         editing = false;
