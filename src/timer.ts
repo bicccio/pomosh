@@ -185,7 +185,7 @@ export async function askAfterPomodoro(
 ): Promise<'break' | 'next' | 'quit' | 'menu'> {
   process.stdout.write(screen(
     '',
-    `  ✓  Pomodoro #${sessionNumber} complete!`,
+    `  ✓  Pomodoro #${sessionNumber} complete! — ${taskName}`,
     '',
     `  [b] break   [enter] next   [m] menu   [q] quit`,
   ));
