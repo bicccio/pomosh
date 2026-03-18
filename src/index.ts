@@ -1,6 +1,6 @@
 import { parseCli } from './cli.js';
 import { loadConfig, saveConfig, ensureDirectories, Config } from './config.js';
-import { countTodayPomos, appendPomodoro } from './logger.js';
+import { countTodayPomos, appendPomodoro, readRecords } from './logger.js';
 import {
   setupScreen,
   teardownScreen,
@@ -228,20 +228,16 @@ async function showTextInput(prompt: string, placeholder: string): Promise<strin
 }
 
 async function showLog(config: Config): Promise<void> {
-  const { existsSync } = await import('fs');
-  const { readFile } = await import('fs/promises');
-  const { join } = await import('path');
-
-  const now = new Date();
-  const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
-  const filePath = join(config.logDir, `pomodoro_${stamp}.log`);
+  const today = new Date();
+  const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const allRecords = await readRecords(config.logDir);
+  const records = allRecords.filter(r => r.date === todayISO);
 
   let lines: string[];
-  if (!existsSync(filePath)) {
+  if (records.length === 0) {
     lines = [`  ${DIM}No pomos today.${RESET}`];
   } else {
-    const content = await readFile(filePath, 'utf-8');
-    lines = content.split('\n').filter(l => l.trim() !== '').map(l => `  ${l}`);
+    lines = records.map((r, i) => `  ${i + 1})  ${r.time}  ${r.duration_min} min  ${r.task}`);
   }
 
   process.stdout.write(screen(
@@ -270,7 +266,7 @@ async function runSession(taskName: string, config: Config): Promise<'quit' | 'm
       continue;
     }
 
-    await appendPomodoro(config.logDir, taskName, currentTime());
+    await appendPomodoro(config.logDir, taskName, currentTime(), config.pomodoroMin);
     sendNotification(config.notificationsEnabled, 'pomosh 🍅', `Pomodoro #${sessionNumber} completato!`, config.notificationSound);
 
     const afterPomo = await askAfterPomodoro(sessionNumber, taskName, breakMin);
