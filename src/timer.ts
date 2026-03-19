@@ -1,3 +1,5 @@
+import { spawnSync, spawn } from 'child_process';
+
 const HIDE_CURSOR = '\x1b[?25l';
 const SHOW_CURSOR = '\x1b[?25h';
 const ENTER_ALT   = '\x1b[?1049h';
@@ -150,6 +152,30 @@ export async function runTimer(
   return 'completed';
 }
 
+// ─── notifications ────────────────────────────────────────────────────────────
+
+function notify(title: string, body: string, sound: string): void {
+  // terminal-notifier: persistent (stays until clicked, max 30s), no spurious "Show" button
+  // Install with: brew install terminal-notifier
+  const tn = spawnSync('terminal-notifier', ['-title', title, '-message', body, '-timeout', '30', '-sound', sound]);
+  if (tn.status === 0) return;
+
+  // Fallback: basic banner via osascript (disappears on its own, may show "Show" button)
+  const safe = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  const osaSound = sound === 'default' ? 'Ping' : sound;
+  spawnSync('osascript', ['-e', `display notification "${safe(body)}" with title "${safe(title)}" sound name "${safe(osaSound)}"`]);
+}
+
+export function sendNotification(enabled: boolean, title: string, body: string, sound: string): void {
+  if (enabled) notify(title, body, sound);
+}
+
+export function previewSound(sound: string): void {
+  const name = sound === 'default' ? 'Ping' : sound;
+  const proc = spawn('afplay', [`/System/Library/Sounds/${name}.aiff`], { stdio: 'ignore' });
+  proc.unref();
+}
+
 // ─── post-timer prompts ───────────────────────────────────────────────────────
 
 export async function askAfterPomodoro(
@@ -159,9 +185,9 @@ export async function askAfterPomodoro(
 ): Promise<'break' | 'next' | 'quit' | 'menu'> {
   process.stdout.write(screen(
     '',
-    `  ✓  Pomodoro #${sessionNumber} complete!`,
+    `  ✓  Pomodoro #${sessionNumber} complete! — ${taskName}`,
     '',
-    `  [b] start ${breakMin} min break   [enter] next pomodoro   [m] menu   [q] quit`,
+    `  [b] break   [enter] next   [m] menu   [q] quit`,
   ));
   process.stdout.write(SHOW_CURSOR);
   while (true) {

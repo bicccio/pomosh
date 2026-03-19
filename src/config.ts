@@ -7,6 +7,8 @@ export interface Config {
   pomodoroMin: number;
   shortBreakMin: number;
   longBreakMin: number;
+  notificationsEnabled: boolean;
+  notificationSound: string;
   logDir: string;
   configPath: string;
 }
@@ -15,6 +17,8 @@ const DEFAULT_CONFIG: Config = {
   pomodoroMin: 25,
   shortBreakMin: 5,
   longBreakMin: 15,
+  notificationsEnabled: true,
+  notificationSound: 'default',
   logDir: join(homedir(), '.pomosh', 'pomos'),
   configPath: join(homedir(), '.pomosh', 'pomosh.cfg'),
 };
@@ -29,6 +33,8 @@ export async function saveConfig(config: Config): Promise<void> {
     `pomodoro_min = ${config.pomodoroMin}`,
     `short_break_min = ${config.shortBreakMin}`,
     `long_break_min = ${config.longBreakMin}`,
+    `notifications_enabled = ${config.notificationsEnabled ? 'true' : 'false'}`,
+    `notification_sound = ${config.notificationSound}`,
   ].join('\n') + '\n';
   await writeFile(config.configPath, content, 'utf-8');
 }
@@ -56,6 +62,8 @@ export async function loadConfig(configPath?: string): Promise<Config> {
       if (key === 'pomodoro_min') cfg.pomodoroMin = parseInt(val, 10) || cfg.pomodoroMin;
       if (key === 'short_break_min') cfg.shortBreakMin = parseInt(val, 10) || cfg.shortBreakMin;
       if (key === 'long_break_min') cfg.longBreakMin = parseInt(val, 10) || cfg.longBreakMin;
+      if (key === 'notifications_enabled') cfg.notificationsEnabled = val === 'true';
+      if (key === 'notification_sound' && val) cfg.notificationSound = val;
     }
   } catch {
     // config file unreadable — use defaults
