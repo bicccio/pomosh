@@ -24,12 +24,13 @@ export function teardownScreen(): void {
 
 function cols(): number { return process.stdout.columns || 80; }
 
-const ASCII_TITLE = [
-  ' ____    ___   __  __   ___   ____   _   _ ',
-  '|  _ \\  / _ \\ |  \\/  | / _ \\ / ___|| | | |',
-  '| |_) || | | || |\\/| || | | |\\___ \\| |_| |',
-  '|  __/ | |_| || |  | || |_| | ___) ||  _  |',
-  '|_|     \\___/ |_|  |_| \\___/ |____/ |_| |_|',
+// Block font for "pomosh" — each row is an array of 6 letter glyphs (6 chars each)
+const BLOCK_TITLE = [
+  ['█████ ', ' ███  ', '█    █', ' ███  ', '█████ ', '█    █'],
+  ['█   █ ', '█   █ ', '██  ██', '█   █ ', '█     ', '█    █'],
+  ['█████ ', '█   █ ', '█ ██ █', '█   █ ', '█████ ', '██████'],
+  ['█     ', '█   █ ', '█    █', '█   █ ', '    █ ', '█    █'],
+  ['█     ', ' ███  ', '█    █', ' ███  ', '█████ ', '█    █'],
 ];
 
 // Tomato gradient: orange-red at top → deep red at bottom
@@ -43,8 +44,8 @@ const TITLE_COLORS = [
 
 function titleBar(): string {
   const sep = '─'.repeat(Math.max(0, cols() - 4));
-  if (cols() >= 60) {
-    const lines = ASCII_TITLE.map((l, i) => `  ${BOLD}${TITLE_COLORS[i]}${l}${RESET}`);
+  if (cols() >= 50) {
+    const lines = BLOCK_TITLE.map((row, i) => `  ${BOLD}${TITLE_COLORS[i]}${row.join(' ')}${RESET}`);
     return lines.join('\n') + `\n  ${TITLE_COLORS[4]}${sep}${RESET}`;
   }
   return `${BOLD}  pomosh 🍅${RESET}\n  ${'─'.repeat(Math.max(0, cols() - 4))}`;
