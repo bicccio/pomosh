@@ -1,4 +1,4 @@
-import { spawnSync, spawn } from 'child_process';
+import { spawn } from 'child_process';
 
 const HIDE_CURSOR = '\x1b[?25l';
 const SHOW_CURSOR = '\x1b[?25h';
@@ -24,7 +24,29 @@ export function teardownScreen(): void {
 
 function cols(): number { return process.stdout.columns || 80; }
 
+const ASCII_TITLE = [
+  ' ____    ___   __  __   ___   ____   _   _ ',
+  '|  _ \\  / _ \\ |  \\/  | / _ \\ / ___|| | | |',
+  '| |_) || | | || |\\/| || | | |\\___ \\| |_| |',
+  '|  __/ | |_| || |  | || |_| | ___) ||  _  |',
+  '|_|     \\___/ |_|  |_| \\___/ |____/ |_| |_|',
+];
+
+// Tomato gradient: orange-red at top → deep red at bottom
+const TITLE_COLORS = [
+  '\x1b[38;2;255;120;60m',
+  '\x1b[38;2;240;90;40m',
+  '\x1b[38;2;220;65;25m',
+  '\x1b[38;2;200;42;15m',
+  '\x1b[38;2;178;22;8m',
+];
+
 function titleBar(): string {
+  const sep = '─'.repeat(Math.max(0, cols() - 4));
+  if (cols() >= 60) {
+    const lines = ASCII_TITLE.map((l, i) => `  ${BOLD}${TITLE_COLORS[i]}${l}${RESET}`);
+    return lines.join('\n') + `\n  ${TITLE_COLORS[4]}${sep}${RESET}`;
+  }
   return `${BOLD}  pomosh 🍅${RESET}\n  ${'─'.repeat(Math.max(0, cols() - 4))}`;
 }
 
@@ -157,13 +179,15 @@ export async function runTimer(
 function notify(title: string, body: string, sound: string): void {
   // terminal-notifier: persistent (stays until clicked, max 30s), no spurious "Show" button
   // Install with: brew install terminal-notifier
-  const tn = spawnSync('terminal-notifier', ['-title', title, '-message', body, '-timeout', '30', '-sound', sound]);
-  if (tn.status === 0) return;
-
-  // Fallback: basic banner via osascript (disappears on its own, may show "Show" button)
-  const safe = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-  const osaSound = sound === 'default' ? 'Ping' : sound;
-  spawnSync('osascript', ['-e', `display notification "${safe(body)}" with title "${safe(title)}" sound name "${safe(osaSound)}"`]);
+  const tn = spawn('terminal-notifier', ['-title', title, '-message', body, '-timeout', '30', '-sound', sound], { stdio: 'ignore' });
+  tn.once('error', () => {
+    // terminal-notifier not available — fallback to osascript banner
+    const safe = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    const osaSound = sound === 'default' ? 'Ping' : sound;
+    const osa = spawn('osascript', ['-e', `display notification "${safe(body)}" with title "${safe(title)}" sound name "${safe(osaSound)}"`], { stdio: 'ignore' });
+    osa.unref();
+  });
+  tn.unref();
 }
 
 export function sendNotification(enabled: boolean, title: string, body: string, sound: string): void {
