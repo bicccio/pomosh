@@ -204,26 +204,45 @@ async function showSettings(config: Config): Promise<void> {
   }
 }
 
-async function showTextInput(prompt: string, placeholder: string): Promise<string | null> {
+async function showTextInput(prompt: string, placeholder: string, history: string[] = []): Promise<string | null> {
   let value = '';
+  let historyIdx = -1;
+  let savedInput = '';
 
   while (true) {
     const display = value || `${DIM}${placeholder}${RESET}`;
+    const historyHint = history.length > 0 ? `  ${DIM}[↑↓] history   [esc] menu${RESET}` : `  ${DIM}[esc] menu${RESET}`;
     process.stdout.write(screen(
       '',
       `  ${prompt}`,
       '',
       `  \x1b[1m❯\x1b[0m ${display}`,
+      '',
+      historyHint,
     ));
     process.stdout.write(SHOW_CURSOR);
 
     const key = await readKey();
     process.stdout.write(HIDE_CURSOR);
 
-    if (key === '\r' || key === '\n')       return value.trim() || placeholder;
-    if (key === '\u0003')                   return null; // Ctrl+C
-    if (key === '\x7f' || key === '\b')     value = value.slice(0, -1);
-    else if (key.length === 1 && key >= ' ') value += key;
+    if (key === '\r' || key === '\n')        return value.trim() || placeholder;
+    if (key === '\u0003' || key === '\x1b') return null; // Ctrl+C or Esc → back to menu
+    if (key === '\x7f' || key === '\b') {
+      value = value.slice(0, -1);
+      historyIdx = -1;
+    } else if (key === '\x1b[A' && history.length > 0) {
+      // ↑ older
+      if (historyIdx === -1) savedInput = value;
+      if (historyIdx < history.length - 1) historyIdx++;
+      value = history[historyIdx];
+    } else if (key === '\x1b[B' && history.length > 0) {
+      // ↓ newer
+      if (historyIdx > 0) { historyIdx--; value = history[historyIdx]; }
+      else if (historyIdx === 0) { historyIdx = -1; value = savedInput; }
+    } else if (key.length === 1 && key >= ' ') {
+      value += key;
+      historyIdx = -1;
+    }
   }
 }
 
@@ -327,7 +346,15 @@ async function main() {
       }
     } while (choice !== 0);
 
-    const name = await showTextInput('Task name', 'e.g. writing the readme');
+    const allRecords = await readRecords(config.logDir);
+    const seen = new Set<string>();
+    const taskHistory = allRecords
+      .slice()
+      .reverse()
+      .map(r => r.task)
+      .filter(t => { if (seen.has(t)) return false; seen.add(t); return true; });
+
+    const name = await showTextInput('Task name', 'e.g. writing the readme', taskHistory);
     if (name === null) continue; // Ctrl+C → back to menu
 
     const outcome = await runSession(name, config);
