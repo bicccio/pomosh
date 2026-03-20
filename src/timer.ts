@@ -33,10 +33,22 @@ export function visibleWidth(s: string): number {
   return w;
 }
 
-export function summaryBox(content: string): string {
-  const inner = ` ${content} `;
-  const w = visibleWidth(inner);
-  return `  ╭${'─'.repeat(w)}╮\n  │${inner}│\n  ╰${'─'.repeat(w)}╯`;
+export function summaryBox(lines: string | string[], title?: string, footer?: string): string {
+  const all = Array.isArray(lines) ? lines : [lines];
+  const inners = all.map(l => `  ${l}  `);
+  const minW = footer ? footer.length + 4 : 0;
+  const w = Math.max(...inners.map(visibleWidth), minW);
+  const top = title
+    ? `╭─ ${title} ${'─'.repeat(Math.max(0, w - title.length - 3))}╮`
+    : `╭${'─'.repeat(w)}╮`;
+  const bottom = footer
+    ? `╰${'─'.repeat(Math.max(0, w - footer.length - 3))} ${footer} ─╯`
+    : `╰${'─'.repeat(w)}╯`;
+  const empty = `  │${' '.repeat(w)}│`;
+  const rows = inners
+    .map(inner => `  │${inner}${' '.repeat(Math.max(0, w - visibleWidth(inner)))}│`)
+    .join('\n');
+  return `  ${top}\n${empty}\n${rows}\n${empty}\n  ${bottom}`;
 }
 
 // Block font for "pomosh" — each row is an array of 6 letter glyphs (6 chars each)
@@ -72,7 +84,7 @@ function drawBar(remaining: number, total: number): string {
   return '█'.repeat(filled) + '░'.repeat(width - filled);
 }
 
-function sessionSummaryBox(sessionNumber: number, isBreak: boolean, totalMinToday: number): string {
+function sessionSummaryBox(sessionNumber: number, isBreak: boolean, totalMinToday: number, blinkOn: boolean): string {
   const completedToday = isBreak ? sessionNumber : sessionNumber - 1;
   const tomato = TITLE_COLORS[0];
 
@@ -84,12 +96,10 @@ function sessionSummaryBox(sessionNumber: number, isBreak: boolean, totalMinToda
   if (overflow > 0) icons += `${DIM}+${overflow} ${RESET}`;
   icons += `${tomato}🍅${RESET} `.repeat(visible);
 
-  const current = isBreak ? '' : `${tomato}◉${RESET} `;
-  const label = isBreak
-    ? `${completedToday} done · break · ${totalMinToday} min`
-    : `#${sessionNumber} in progress · ${totalMinToday} min`;
+  const current = isBreak ? '' : (blinkOn ? `${tomato}◉${RESET} ` : '  ');
+  const label = `${completedToday} done · ${totalMinToday} min`;
 
-  return summaryBox(`${icons}${current}  ${label}`);
+  return summaryBox([`${icons}${current}`, '', label], 'today');
 }
 
 export function screen(summary: string | null, ...lines: string[]): string {
@@ -108,19 +118,16 @@ function buildTimerScreen(
   const mm  = String(Math.floor(seconds / 60)).padStart(2, '0');
   const ss  = String(seconds % 60).padStart(2, '0');
   const bar = drawBar(seconds, totalMin * 60);
-  const label = isBreak
-    ? `Break — ${totalMin} min`
-    : `Pomodoro #${sessionNumber} — ${taskName}`;
 
   return screen(
-    sessionSummaryBox(sessionNumber, isBreak, totalMinToday),
+    sessionSummaryBox(sessionNumber, isBreak, totalMinToday, seconds % 2 === 0),
     '',
-    `  ${label}`,
+    `  ${isBreak ? 'Break' : taskName}`,
     '',
     `  ${mm}:${ss}`,
     `  ${bar}`,
     '',
-    `  ${DIM}[q] interrupt${RESET}`,
+    `  ${DIM}[esc] interrupt${RESET}`,
   );
 }
 
@@ -161,7 +168,7 @@ export async function runTimer(
 
   const onKey = (key: string) => {
     if (key === '\u0003') { process.stdout.write(SHOW_CURSOR + EXIT_ALT); process.exit(0); }
-    if ((key === 'q' || key === 'Q' || key === '\x1b') && interruptResolve) {
+    if (key === '\x1b' && interruptResolve) {
       const r = interruptResolve;
       interruptResolve = null;
       r();
@@ -185,7 +192,6 @@ export async function runTimer(
 
     if (interrupted) {
       cleanupStdin();
-      process.stdout.write(SHOW_CURSOR);
       process.stdout.write(
         buildTimerScreen(sessionNumber, taskName, remaining, minutes, isBreak, totalMinToday) +
         `\n\n  ${isBreak ? 'Break' : 'Pomodoro'} interrupted — cancel it? ${DIM}[y] yes   [n] no${RESET}`,
@@ -196,8 +202,6 @@ export async function runTimer(
         if (key === 'y' || key === 'Y') return 'cancelled';
         if (key === 'n' || key === 'N' || key === '\x1b') break;
       }
-
-      process.stdout.write(HIDE_CURSOR);
       process.stdin.setRawMode(true);
       process.stdin.resume();
       process.stdin.setEncoding('utf8');

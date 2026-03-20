@@ -39,16 +39,17 @@ async function buildSummary(logDir: string): Promise<string | null> {
     const maxVisible = Math.max(0, Math.floor(((process.stdout.columns || 80) - 30) / 3));
     const overflow = Math.max(0, n - maxVisible);
     const visible  = n - overflow;
-    const label = `${n} · ${totalMin} min`;
+    const label = `${n} done · ${totalMin} min`;
     let icons = overflow > 0 ? `${DIM}+${overflow} ${RESET}` : '';
     icons += `${tomato}🍅${RESET} `.repeat(visible);
-    return summaryBox(`${icons}  ${label}`);
+    return summaryBox([icons, '', label], 'today', '[d] details');
   }
 
   const yesterRecs = recs.filter(r => r.date === yesterISO);
   if (yesterRecs.length > 0) {
     const totalMin = yesterRecs.reduce((s, r) => s + r.duration_min, 0);
-    return summaryBox(`ieri: ${yesterRecs.length} 🍅 · ${totalMin} min`);
+    const tomato = '\x1b[38;2;255;120;60m';
+    return summaryBox([`${tomato}🍅${RESET} `.repeat(yesterRecs.length), '', `${yesterRecs.length} done · ${totalMin} min`], 'yesterday');
   }
 
   return null;
@@ -58,12 +59,12 @@ async function buildSummary(logDir: string): Promise<string | null> {
 
 const MENU_OPTIONS = [
   'Start a new pomodoro',
-  "View today's pomodoros",
+  'View stats',
   'Settings',
   'Exit',
 ] as const;
 
-async function showMenu(logDir: string): Promise<0 | 1 | 2 | 3> {
+async function showMenu(logDir: string): Promise<0 | 1 | 2 | 3 | 'log'> {
   const summary = await buildSummary(logDir);
   let idx = 0;
 
@@ -87,6 +88,7 @@ async function showMenu(logDir: string): Promise<0 | 1 | 2 | 3> {
     else if (key === '\x1b[B' && idx < MENU_OPTIONS.length - 1) idx++;
     else if (key === '\r' || key === '\n')                   return idx as 0 | 1 | 2 | 3;
     else if (key === 'q' || key === 'Q')                     return 3;
+    else if (key === 'd' || key === 'D')                     return 'log';
   }
 }
 
@@ -238,6 +240,102 @@ async function showSettings(config: Config): Promise<void> {
   }
 }
 
+const DAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'];
+const BAR_WIDTH = 20;
+const BOLD = '\x1b[1m';
+
+async function showStats(config: Config): Promise<void> {
+  let mode: 'week' | 'month' = 'week';
+  let offset = 0;
+  const records = await readRecords(config.logDir);
+
+  const countByDate = new Map<string, number>();
+  const minByDate = new Map<string, number>();
+  for (const r of records) {
+    countByDate.set(r.date, (countByDate.get(r.date) ?? 0) + 1);
+    minByDate.set(r.date, (minByDate.get(r.date) ?? 0) + r.duration_min);
+  }
+
+  function toISO(d: Date): string {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  function render() {
+    const now = new Date();
+    const todayISO = toISO(now);
+    let days: Date[] = [];
+    let title: string;
+
+    if (mode === 'week') {
+      const dow = (now.getDay() + 6) % 7; // 0=Monday
+      const monday = new Date(now);
+      monday.setDate(now.getDate() - dow + offset * 7);
+      monday.setHours(0, 0, 0, 0);
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(monday);
+        d.setDate(monday.getDate() + i);
+        days.push(d);
+      }
+      const fmt = (d: Date) => `${DAY_LABELS[(d.getDay())]} ${d.toLocaleString('en', { month: 'short' })} ${d.getDate()}`;
+      title = `  Weekly Stats — ${fmt(days[0])} – ${fmt(days[6])}`;
+    } else {
+      const base = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+      const daysInMonth = new Date(base.getFullYear(), base.getMonth() + 1, 0).getDate();
+      for (let i = 1; i <= daysInMonth; i++) {
+        days.push(new Date(base.getFullYear(), base.getMonth(), i));
+      }
+      title = `  Monthly Stats — ${MONTH_NAMES[base.getMonth()]} ${base.getFullYear()}`;
+    }
+
+    const counts = days.map(d => countByDate.get(toISO(d)) ?? 0);
+    const maxCount = Math.max(...counts, 1);
+    const totalPomos = counts.reduce((a, b) => a + b, 0);
+    const totalMin = days.reduce((s, d) => s + (minByDate.get(toISO(d)) ?? 0), 0);
+
+    const barLines = days.map((d, i) => {
+      const iso = toISO(d);
+      const count = counts[i];
+      const filled = Math.round((count / maxCount) * BAR_WIDTH);
+      const bar = '█'.repeat(filled) + '░'.repeat(BAR_WIDTH - filled);
+      const isToday = iso === todayISO;
+
+      let label: string;
+      if (mode === 'week') {
+        label = `${DAY_LABELS[d.getDay()]} ${String(d.getDate()).padStart(2)}`;
+      } else {
+        label = String(d.getDate()).padStart(2);
+      }
+
+      const countStr = `${count} 🍅`;
+      if (isToday) {
+        return `  ${BOLD}${TOMATO}${label}  ${bar}  ${countStr}${RESET}`;
+      } else if (count === 0) {
+        return `  ${DIM}${label}  ${bar}  ${countStr}${RESET}`;
+      } else {
+        return `  ${label}  ${bar}  ${countStr}`;
+      }
+    });
+
+    const nextDim = offset === 0 ? DIM : '';
+    const footer = `  ${DIM}[w] weekly  [m] monthly  [←] prev  ${nextDim}[→] next${DIM}  [q] back${RESET}`;
+    const total = `  Total: ${totalPomos} 🍅  ${totalMin} min`;
+
+    process.stdout.write(screen(null, '', title, '', ...barLines, '', total, '', footer));
+  }
+
+  while (true) {
+    render();
+    const key = await readKey();
+    if (key === 'w' || key === 'W')   { mode = 'week';  offset = 0; }
+    else if (key === 'm' || key === 'M') { mode = 'month'; offset = 0; }
+    else if (key === '\x1b[D')        offset--;
+    else if (key === '\x1b[C' && offset < 0) offset++;
+    else if (key === 'q' || key === 'Q' || key === '\x1b') return;
+  }
+}
+
 async function showTextInput(summary: string | null, prompt: string, placeholder: string, history: string[] = []): Promise<string | null> {
   let value = '';
   let historyIdx = -1;
@@ -363,7 +461,7 @@ async function main() {
 
   // If task was passed via CLI, skip the menu entirely
   if (cliTaskName) {
-    const outcome = await runSession(cliTaskName, config);
+    const outcome = await runSession(cliTaskName[0].toUpperCase() + cliTaskName.slice(1), config);
     if (outcome === 'quit') {
       teardownScreen();
       process.stdout.write('\n  Great work! 🍅\n\n');
@@ -374,15 +472,19 @@ async function main() {
 
   // Main loop: menu → action → back to menu
   while (true) {
-    let choice: 0 | 1 | 2 | 3;
+    let choice: 0 | 1 | 2 | 3 | 'log';
 
     do {
       choice = await showMenu(config.logDir);
 
       if (choice === 3) { teardownScreen(); process.exit(0); }
 
-      if (choice === 1) {
+      if (choice === 'log') {
         await showLog(config);
+      }
+
+      if (choice === 1) {
+        await showStats(config);
       }
 
       if (choice === 2) {
@@ -402,7 +504,7 @@ async function main() {
     const name = await showTextInput(menuSummary, 'Task name', 'e.g. writing the readme', taskHistory);
     if (name === null) continue; // Ctrl+C → back to menu
 
-    const outcome = await runSession(name, config);
+    const outcome = await runSession(name[0].toUpperCase() + name.slice(1), config);
     if (outcome === 'quit') {
       teardownScreen();
       process.stdout.write('\n  Great work! 🍅\n\n');
