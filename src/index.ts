@@ -1,6 +1,6 @@
 import { parseCli } from './cli.js';
 import { loadConfig, saveConfig, ensureDirectories, Config } from './config.js';
-import { countTodayPomos, appendPomodoro } from './logger.js';
+import { countTodayPomos, appendPomodoro, readRecords, listPomodoros } from './logger.js';
 import {
   setupScreen,
   teardownScreen,
@@ -9,17 +9,49 @@ import {
   runTimer,
   askAfterPomodoro,
   askAfterBreak,
-  askAfterCancel,
+  sendNotification,
+  previewSound,
+  summaryBox,
 } from './timer.js';
 
 const SHOW_CURSOR = '\x1b[?25h';
 const HIDE_CURSOR = '\x1b[?25l';
-const DIM   = '\x1b[2m';
-const RESET = '\x1b[0m';
+const DIM    = '\x1b[2m';
+const RESET  = '\x1b[0m';
+const TOMATO = '\x1b[38;2;255;120;60m';
+const MUTED  = '\x1b[38;2;130;130;130m';
 
 function currentTime(): string {
   const now = new Date();
   return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+}
+
+async function buildSummary(logDir: string): Promise<string | null> {
+  const recs = await readRecords(logDir);
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const yesterISO = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+
+  const todayRecs = recs.filter(r => r.date === todayISO);
+  if (todayRecs.length > 0) {
+    const totalMin = todayRecs.reduce((s, r) => s + r.duration_min, 0);
+    const n = todayRecs.length;
+    const tomato = '\x1b[38;2;255;120;60m';
+    const maxVisible = Math.max(0, Math.floor(((process.stdout.columns || 80) - 30) / 3));
+    const overflow = Math.max(0, n - maxVisible);
+    const visible  = n - overflow;
+    const label = `${n} · ${totalMin} min`;
+    let icons = overflow > 0 ? `${DIM}+${overflow} ${RESET}` : '';
+    icons += `${tomato}🍅${RESET} `.repeat(visible);
+    return summaryBox(`${icons}  ${label}`);
+  }
+
+  const yesterRecs = recs.filter(r => r.date === yesterISO);
+  if (yesterRecs.length > 0) {
+    const totalMin = yesterRecs.reduce((s, r) => s + r.duration_min, 0);
+    return summaryBox(`ieri: ${yesterRecs.length} 🍅 · ${totalMin} min`);
+  }
+
+  return null;
 }
 
 // ─── custom fullscreen prompts ────────────────────────────────────────────────
@@ -31,20 +63,23 @@ const MENU_OPTIONS = [
   'Exit',
 ] as const;
 
-async function showMenu(): Promise<0 | 1 | 2 | 3> {
+async function showMenu(logDir: string): Promise<0 | 1 | 2 | 3> {
+  const summary = await buildSummary(logDir);
   let idx = 0;
 
   while (true) {
-    const opts = MENU_OPTIONS.map((label, i) =>
-      i === idx ? `  \x1b[1m❯\x1b[0m ${label}` : `    ${DIM}${label}${RESET}`,
-    );
+    const opts = MENU_OPTIONS.map((label, i) => {
+      if (i === 0 && i === idx) return `  \x1b[1m❯\x1b[0m ${TOMATO}\x1b[1m${label}\x1b[0m${RESET}`;
+      if (i === 0)              return `    ${TOMATO}${label}${RESET}`;
+      if (i === idx)            return `  \x1b[1m❯ ${label}\x1b[0m`;
+      return `    ${label}`;
+    });
     process.stdout.write(screen(
-      '',
-      '  What would you like to do?',
+      summary,
       '',
       ...opts,
       '',
-      `  ${DIM}[↑↓] navigate   [enter] select   [q] quit${RESET}`,
+      `  ${MUTED}[↑↓] navigate   [enter] select   [q] quit${RESET}`,
     ));
 
     const key = await readKey();
@@ -55,17 +90,28 @@ async function showMenu(): Promise<0 | 1 | 2 | 3> {
   }
 }
 
+const NOTIFICATION_SOUNDS = ['default', 'Basso', 'Blow', 'Bottle', 'Frog', 'Funk', 'Glass', 'Hero', 'Morse', 'Ping', 'Pop', 'Purr', 'Sosumi', 'Submarine', 'Tink'];
+
 async function showSettings(config: Config): Promise<void> {
-  const fields = [
-    { label: 'Pomodoro',    key: 'pomodoroMin'   as keyof Config },
-    { label: 'Short break', key: 'shortBreakMin' as keyof Config },
-    { label: 'Long break',  key: 'longBreakMin'  as keyof Config },
+  type NumericField = { kind: 'number'; label: string; key: 'pomodoroMin' | 'shortBreakMin' | 'longBreakMin' };
+  type BoolField    = { kind: 'bool';   label: string; key: 'notificationsEnabled' };
+  type CycleField   = { kind: 'cycle';  label: string; key: 'notificationSound'; options: string[] };
+  type Field = NumericField | BoolField | CycleField;
+
+  const fields: Field[] = [
+    { kind: 'number', label: 'Pomodoro',       key: 'pomodoroMin',         },
+    { kind: 'number', label: 'Short break',    key: 'shortBreakMin',       },
+    { kind: 'number', label: 'Long break',     key: 'longBreakMin',        },
+    { kind: 'bool',   label: 'Notifications',  key: 'notificationsEnabled' },
+    { kind: 'cycle',  label: 'Sound',          key: 'notificationSound',   options: NOTIFICATION_SOUNDS },
   ];
 
   const original = {
-    pomodoroMin:   config.pomodoroMin,
-    shortBreakMin: config.shortBreakMin,
-    longBreakMin:  config.longBreakMin,
+    pomodoroMin:          config.pomodoroMin,
+    shortBreakMin:        config.shortBreakMin,
+    longBreakMin:         config.longBreakMin,
+    notificationsEnabled: config.notificationsEnabled,
+    notificationSound:    config.notificationSound,
   };
 
   let idx = 0;
@@ -74,19 +120,33 @@ async function showSettings(config: Config): Promise<void> {
 
   const renderRow = (i: number, inEdit: boolean, buf: string) => {
     const field = fields[i];
-    const value = config[field.key] as number;
-    const label = field.label.padEnd(12);
-    if (inEdit) {
-      return `  \x1b[1m❯\x1b[0m ${label} [${buf}] min`;
+    const label = field.label.padEnd(14);
+    if (field.kind === 'bool') {
+      const val = config[field.key] ? 'on' : 'off';
+      return `  \x1b[1m❯\x1b[0m ${label} ${val}`;
     }
-    return `  \x1b[1m❯\x1b[0m ${label} ${value} min`;
+    if (field.kind === 'cycle') {
+      const opts = field.options;
+      const ci = opts.indexOf(config[field.key]);
+      const prev = opts[(ci - 1 + opts.length) % opts.length];
+      const next = opts[(ci + 1) % opts.length];
+      return `  \x1b[1m❯\x1b[0m ${label} ${DIM}${prev}${RESET} \x1b[1m${config[field.key]}\x1b[0m ${DIM}${next}${RESET}`;
+    }
+    if (inEdit) return `  \x1b[1m❯\x1b[0m ${label} [${buf}] min`;
+    return `  \x1b[1m❯\x1b[0m ${label} ${config[field.key]} min`;
   };
 
   const renderIdleRow = (i: number) => {
     const field = fields[i];
-    const value = config[field.key] as number;
-    const label = field.label.padEnd(12);
-    return `    ${DIM}${label} ${value} min${RESET}`;
+    const label = field.label.padEnd(14);
+    if (field.kind === 'bool') {
+      const val = config[field.key] ? 'on' : 'off';
+      return `    ${DIM}${label} ${val}${RESET}`;
+    }
+    if (field.kind === 'cycle') {
+      return `    ${DIM}${label} ${config[field.key]}${RESET}`;
+    }
+    return `    ${DIM}${label} ${config[field.key]} min${RESET}`;
   };
 
   while (true) {
@@ -97,9 +157,10 @@ async function showSettings(config: Config): Promise<void> {
 
     const hint = editing
       ? `  ${DIM}[enter] confirm   [esc] cancel${RESET}`
-      : `  ${DIM}[↑↓] navigate   [enter] edit   [esc] back${RESET}`;
+      : `  ${DIM}[↑↓] navigate   [enter/←/→/space] edit   [esc] back${RESET}`;
 
     process.stdout.write(screen(
+      null,
       '',
       '  Settings',
       '',
@@ -114,12 +175,43 @@ async function showSettings(config: Config): Promise<void> {
 
     if (editing) process.stdout.write(HIDE_CURSOR);
 
+    const currentField = fields[idx];
+
+    const hasChanges = () =>
+      config.pomodoroMin          !== original.pomodoroMin          ||
+      config.shortBreakMin        !== original.shortBreakMin        ||
+      config.longBreakMin         !== original.longBreakMin         ||
+      config.notificationsEnabled !== original.notificationsEnabled  ||
+      config.notificationSound    !== original.notificationSound;
+
+    if ((currentField.kind === 'bool' || currentField.kind === 'cycle') && !editing) {
+      if (key === '\x1b[A' && idx > 0)                 { idx--; continue; }
+      if (key === '\x1b[B' && idx < fields.length - 1) { idx++; continue; }
+      if (key === '\x1b') {
+        if (hasChanges()) await saveConfig(config);
+        return;
+      }
+      if (currentField.kind === 'bool') {
+        if (key === ' ' || key === '\r' || key === '\n' || key === '\x1b[C' || key === '\x1b[D') {
+          config.notificationsEnabled = !config.notificationsEnabled;
+        }
+      } else {
+        const opts = currentField.options;
+        const ci = opts.indexOf(config[currentField.key]);
+        if (key === '\x1b[C' || key === ' ')  config.notificationSound = opts[(ci + 1) % opts.length];
+        else if (key === '\x1b[D')            config.notificationSound = opts[(ci - 1 + opts.length) % opts.length];
+        else { continue; }
+        previewSound(config.notificationSound);
+      }
+      continue;
+    }
+
     if (editing) {
       if (key === '\r' || key === '\n') {
         if (editBuf !== '') {
           const parsed = parseInt(editBuf, 10);
           if (!isNaN(parsed) && parsed > 0) {
-            (config as Record<string, unknown>)[fields[idx].key] = parsed;
+            (config as unknown as Record<string, unknown>)[fields[idx].key] = parsed;
           }
         }
         editing = false;
@@ -139,58 +231,73 @@ async function showSettings(config: Config): Promise<void> {
         editing = true;
         editBuf = '';
       } else if (key === '\x1b') {
-        const changed =
-          config.pomodoroMin   !== original.pomodoroMin   ||
-          config.shortBreakMin !== original.shortBreakMin ||
-          config.longBreakMin  !== original.longBreakMin;
-        if (changed) await saveConfig(config);
+        if (hasChanges()) await saveConfig(config);
         return;
       }
     }
   }
 }
 
-async function showTextInput(prompt: string, placeholder: string): Promise<string | null> {
+async function showTextInput(summary: string | null, prompt: string, placeholder: string, history: string[] = []): Promise<string | null> {
   let value = '';
+  let historyIdx = -1;
+  let savedInput = '';
 
   while (true) {
     const display = value || `${DIM}${placeholder}${RESET}`;
+    const historyHint = history.length > 0 ? `  ${DIM}[↑↓] history   [esc] menu${RESET}` : `  ${DIM}[esc] menu${RESET}`;
     process.stdout.write(screen(
+      summary,
       '',
       `  ${prompt}`,
       '',
       `  \x1b[1m❯\x1b[0m ${display}`,
+      '',
+      historyHint,
     ));
+    // Position cursor at end of input field (2 lines above last line, col after "  ❯ " + value)
+    process.stdout.write(`\x1b[2A\x1b[${5 + value.length}G`);
     process.stdout.write(SHOW_CURSOR);
 
     const key = await readKey();
     process.stdout.write(HIDE_CURSOR);
 
-    if (key === '\r' || key === '\n')       return value.trim() || placeholder;
-    if (key === '\u0003')                   return null; // Ctrl+C
-    if (key === '\x7f' || key === '\b')     value = value.slice(0, -1);
-    else if (key.length === 1 && key >= ' ') value += key;
+    if (key === '\r' || key === '\n')        return value.trim() || placeholder;
+    if (key === '\u0003' || key === '\x1b') return null; // Ctrl+C or Esc → back to menu
+    if (key === '\x7f' || key === '\b') {
+      value = value.slice(0, -1);
+      historyIdx = -1;
+    } else if (key === '\x1b[A' && history.length > 0) {
+      // ↑ older
+      if (historyIdx === -1) savedInput = value;
+      if (historyIdx < history.length - 1) historyIdx++;
+      value = history[historyIdx];
+    } else if (key === '\x1b[B' && history.length > 0) {
+      // ↓ newer
+      if (historyIdx > 0) { historyIdx--; value = history[historyIdx]; }
+      else if (historyIdx === 0) { historyIdx = -1; value = savedInput; }
+    } else if (key.length === 1 && key >= ' ') {
+      value += key;
+      historyIdx = -1;
+    }
   }
 }
 
 async function showLog(config: Config): Promise<void> {
-  const { existsSync } = await import('fs');
-  const { readFile } = await import('fs/promises');
-  const { join } = await import('path');
-
-  const now = new Date();
-  const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
-  const filePath = join(config.logDir, `pomodoro_${stamp}.log`);
+  const today = new Date();
+  const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const allRecords = await readRecords(config.logDir);
+  const records = allRecords.filter(r => r.date === todayISO);
 
   let lines: string[];
-  if (!existsSync(filePath)) {
+  if (records.length === 0) {
     lines = [`  ${DIM}No pomos today.${RESET}`];
   } else {
-    const content = await readFile(filePath, 'utf-8');
-    lines = content.split('\n').filter(l => l.trim() !== '').map(l => `  ${l}`);
+    lines = records.map((r, i) => `  ${i + 1})  ${r.time}  ${r.duration_min} min  ${r.task}`);
   }
 
   process.stdout.write(screen(
+    null,
     '',
     "  Today's pomodoros",
     '',
@@ -202,29 +309,37 @@ async function showLog(config: Config): Promise<void> {
   await readKey();
 }
 
+async function todayMinutes(logDir: string): Promise<number> {
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const recs = await readRecords(logDir);
+  return recs.filter(r => r.date === todayISO).reduce((s, r) => s + r.duration_min, 0);
+}
+
 async function runSession(taskName: string, config: Config): Promise<'quit' | 'menu'> {
   while (true) {
     const sessionNumber = (await countTodayPomos(config.logDir)) + 1;
     const breakMin = sessionNumber % 4 === 0 ? config.longBreakMin : config.shortBreakMin;
 
-    const result = await runTimer(config.pomodoroMin, sessionNumber, taskName, false);
+    const totalMinBefore = await todayMinutes(config.logDir);
 
-    if (result === 'cancelled') {
-      const next = await askAfterCancel();
-      if (next === 'quit') return 'quit';
-      if (next === 'menu') return 'menu';
-      continue;
-    }
+    const result = await runTimer(config.pomodoroMin, sessionNumber, taskName, false, totalMinBefore);
 
-    await appendPomodoro(config.logDir, taskName, currentTime());
+    if (result === 'cancelled') return 'menu';
 
-    const afterPomo = await askAfterPomodoro(sessionNumber, taskName, breakMin);
+    await appendPomodoro(config.logDir, taskName, currentTime(), config.pomodoroMin);
+    sendNotification(config.notificationsEnabled, 'pomosh 🍅', `Pomodoro #${sessionNumber} completato!`, config.notificationSound);
+
+    const postSummary = await buildSummary(config.logDir);
+    const postTotalMin = await todayMinutes(config.logDir);
+
+    const afterPomo = await askAfterPomodoro(sessionNumber, taskName, breakMin, postSummary);
     if (afterPomo === 'quit') return 'quit';
     if (afterPomo === 'menu') return 'menu';
 
     if (afterPomo === 'break') {
-      await runTimer(breakMin, sessionNumber, taskName, true);
-      const afterBreak = await askAfterBreak();
+      await runTimer(breakMin, sessionNumber, taskName, true, postTotalMin);
+      sendNotification(config.notificationsEnabled, 'pomosh', 'Pausa terminata, torna al lavoro!', config.notificationSound);
+      const afterBreak = await askAfterBreak(postSummary);
       if (afterBreak === 'quit') return 'quit';
       if (afterBreak === 'menu') return 'menu';
     }
@@ -262,7 +377,7 @@ async function main() {
     let choice: 0 | 1 | 2 | 3;
 
     do {
-      choice = await showMenu();
+      choice = await showMenu(config.logDir);
 
       if (choice === 3) { teardownScreen(); process.exit(0); }
 
@@ -275,7 +390,16 @@ async function main() {
       }
     } while (choice !== 0);
 
-    const name = await showTextInput('Task name', 'e.g. writing the readme');
+    const allRecords = await readRecords(config.logDir);
+    const seen = new Set<string>();
+    const taskHistory = allRecords
+      .slice()
+      .reverse()
+      .map(r => r.task)
+      .filter(t => { if (seen.has(t)) return false; seen.add(t); return true; });
+
+    const menuSummary = await buildSummary(config.logDir);
+    const name = await showTextInput(menuSummary, 'Task name', 'e.g. writing the readme', taskHistory);
     if (name === null) continue; // Ctrl+C → back to menu
 
     const outcome = await runSession(name, config);

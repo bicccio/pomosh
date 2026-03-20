@@ -1,3 +1,5 @@
+import { spawn } from 'child_process';
+
 const HIDE_CURSOR = '\x1b[?25l';
 const SHOW_CURSOR = '\x1b[?25h';
 const ENTER_ALT   = '\x1b[?1049h';
@@ -22,7 +24,45 @@ export function teardownScreen(): void {
 
 function cols(): number { return process.stdout.columns || 80; }
 
+export function visibleWidth(s: string): number {
+  const clean = s.replace(/\x1b\[[0-9;]*m/g, '');
+  let w = 0;
+  for (const ch of [...clean]) {
+    w += (ch.codePointAt(0) ?? 0) > 0x1F000 ? 2 : 1;
+  }
+  return w;
+}
+
+export function summaryBox(content: string): string {
+  const inner = ` ${content} `;
+  const w = visibleWidth(inner);
+  return `  ╭${'─'.repeat(w)}╮\n  │${inner}│\n  ╰${'─'.repeat(w)}╯`;
+}
+
+// Block font for "pomosh" — each row is an array of 6 letter glyphs (6 chars each)
+const BLOCK_TITLE = [
+  ['█████ ', ' ███  ', '█    █', ' ███  ', '█████ ', '█    █'],
+  ['█   █ ', '█   █ ', '██  ██', '█   █ ', '█     ', '█    █'],
+  ['█████ ', '█   █ ', '█ ██ █', '█   █ ', '█████ ', '██████'],
+  ['█     ', '█   █ ', '█    █', '█   █ ', '    █ ', '█    █'],
+  ['█     ', ' ███  ', '█    █', ' ███  ', '█████ ', '█    █'],
+];
+
+// Tomato gradient: orange-red at top → deep red at bottom
+const TITLE_COLORS = [
+  '\x1b[38;2;255;120;60m',
+  '\x1b[38;2;240;90;40m',
+  '\x1b[38;2;220;65;25m',
+  '\x1b[38;2;200;42;15m',
+  '\x1b[38;2;178;22;8m',
+];
+
 function titleBar(): string {
+  const sep = '─'.repeat(Math.max(0, cols() - 4));
+  if (cols() >= 50) {
+    const lines = BLOCK_TITLE.map((row, i) => `  ${BOLD}${TITLE_COLORS[i]}${row.join(' ')}${RESET}`);
+    return lines.join('\n') + `\n  ${TITLE_COLORS[4]}${sep}${RESET}`;
+  }
   return `${BOLD}  pomosh 🍅${RESET}\n  ${'─'.repeat(Math.max(0, cols() - 4))}`;
 }
 
@@ -32,8 +72,29 @@ function drawBar(remaining: number, total: number): string {
   return '█'.repeat(filled) + '░'.repeat(width - filled);
 }
 
-export function screen(...lines: string[]): string {
-  return [CLEAR, titleBar(), '', ...lines].join('\n');
+function sessionSummaryBox(sessionNumber: number, isBreak: boolean, totalMinToday: number): string {
+  const completedToday = isBreak ? sessionNumber : sessionNumber - 1;
+  const tomato = TITLE_COLORS[0];
+
+  const maxVisible = Math.max(0, Math.floor((cols() - 30) / 3));
+  const overflow   = Math.max(0, completedToday - maxVisible);
+  const visible    = completedToday - overflow;
+
+  let icons = '';
+  if (overflow > 0) icons += `${DIM}+${overflow} ${RESET}`;
+  icons += `${tomato}🍅${RESET} `.repeat(visible);
+
+  const current = isBreak ? '' : `${tomato}◉${RESET} `;
+  const label = isBreak
+    ? `${completedToday} done · break · ${totalMinToday} min`
+    : `#${sessionNumber} in progress · ${totalMinToday} min`;
+
+  return summaryBox(`${icons}${current}  ${label}`);
+}
+
+export function screen(summary: string | null, ...lines: string[]): string {
+  const mid = summary != null ? ['', summary] : [''];
+  return [CLEAR, titleBar(), ...mid, ...lines].join('\n');
 }
 
 function buildTimerScreen(
@@ -42,6 +103,7 @@ function buildTimerScreen(
   seconds: number,
   totalMin: number,
   isBreak: boolean,
+  totalMinToday: number,
 ): string {
   const mm  = String(Math.floor(seconds / 60)).padStart(2, '0');
   const ss  = String(seconds % 60).padStart(2, '0');
@@ -51,6 +113,7 @@ function buildTimerScreen(
     : `Pomodoro #${sessionNumber} — ${taskName}`;
 
   return screen(
+    sessionSummaryBox(sessionNumber, isBreak, totalMinToday),
     '',
     `  ${label}`,
     '',
@@ -87,6 +150,7 @@ export async function runTimer(
   sessionNumber: number,
   taskName: string,
   isBreak: boolean,
+  totalMinToday: number,
 ): Promise<'completed' | 'cancelled'> {
   let remaining = minutes * 60;
   let interruptResolve: (() => void) | null = null;
@@ -112,7 +176,7 @@ export async function runTimer(
   };
 
   while (remaining > 0) {
-    process.stdout.write(buildTimerScreen(sessionNumber, taskName, remaining, minutes, isBreak));
+    process.stdout.write(buildTimerScreen(sessionNumber, taskName, remaining, minutes, isBreak, totalMinToday));
 
     const interrupted = await new Promise<boolean>((resolve) => {
       const timer = setTimeout(() => { interruptResolve = null; resolve(false); }, 1000);
@@ -122,12 +186,10 @@ export async function runTimer(
     if (interrupted) {
       cleanupStdin();
       process.stdout.write(SHOW_CURSOR);
-      process.stdout.write(screen(
-        '',
-        `  ${isBreak ? 'Break' : 'Pomodoro'} interrupted.`,
-        '',
-        '  Cancel it? [y / n]',
-      ));
+      process.stdout.write(
+        buildTimerScreen(sessionNumber, taskName, remaining, minutes, isBreak, totalMinToday) +
+        `\n\n  ${isBreak ? 'Break' : 'Pomodoro'} interrupted — cancel it? ${DIM}[y] yes   [n] no${RESET}`,
+      );
 
       while (true) {
         const key = await readKey();
@@ -145,9 +207,35 @@ export async function runTimer(
     }
   }
 
-  process.stdout.write(buildTimerScreen(sessionNumber, taskName, 0, minutes, isBreak));
+  process.stdout.write(buildTimerScreen(sessionNumber, taskName, 0, minutes, isBreak, totalMinToday));
   cleanupStdin();
   return 'completed';
+}
+
+// ─── notifications ────────────────────────────────────────────────────────────
+
+function notify(title: string, body: string, sound: string): void {
+  // terminal-notifier: persistent (stays until clicked, max 30s), no spurious "Show" button
+  // Install with: brew install terminal-notifier
+  const tn = spawn('terminal-notifier', ['-title', title, '-message', body, '-timeout', '30', '-sound', sound], { stdio: 'ignore' });
+  tn.once('error', () => {
+    // terminal-notifier not available — fallback to osascript banner
+    const safe = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    const osaSound = sound === 'default' ? 'Ping' : sound;
+    const osa = spawn('osascript', ['-e', `display notification "${safe(body)}" with title "${safe(title)}" sound name "${safe(osaSound)}"`], { stdio: 'ignore' });
+    osa.unref();
+  });
+  tn.unref();
+}
+
+export function sendNotification(enabled: boolean, title: string, body: string, sound: string): void {
+  if (enabled) notify(title, body, sound);
+}
+
+export function previewSound(sound: string): void {
+  const name = sound === 'default' ? 'Ping' : sound;
+  const proc = spawn('afplay', [`/System/Library/Sounds/${name}.aiff`], { stdio: 'ignore' });
+  proc.unref();
 }
 
 // ─── post-timer prompts ───────────────────────────────────────────────────────
@@ -156,12 +244,14 @@ export async function askAfterPomodoro(
   sessionNumber: number,
   taskName: string,
   breakMin: number,
+  summary: string | null,
 ): Promise<'break' | 'next' | 'quit' | 'menu'> {
   process.stdout.write(screen(
+    summary,
     '',
-    `  ✓  Pomodoro #${sessionNumber} complete!`,
+    `  ✓  Pomodoro #${sessionNumber} complete! — ${taskName}`,
     '',
-    `  [b] start ${breakMin} min break   [enter] next pomodoro   [m] menu   [q] quit`,
+    `  [b] break   [enter] next   [m] menu   [q] quit`,
   ));
   process.stdout.write(SHOW_CURSOR);
   while (true) {
@@ -173,8 +263,9 @@ export async function askAfterPomodoro(
   }
 }
 
-export async function askAfterBreak(): Promise<'next' | 'quit' | 'menu'> {
+export async function askAfterBreak(summary: string | null): Promise<'next' | 'quit' | 'menu'> {
   process.stdout.write(screen(
+    summary,
     '',
     '  ✓  Break complete!',
     '',
@@ -189,18 +280,3 @@ export async function askAfterBreak(): Promise<'next' | 'quit' | 'menu'> {
   }
 }
 
-export async function askAfterCancel(): Promise<'retry' | 'quit' | 'menu'> {
-  process.stdout.write(screen(
-    '',
-    '  Pomodoro cancelled.',
-    '',
-    '  [enter] start over   [m] menu   [q] quit',
-  ));
-  process.stdout.write(SHOW_CURSOR);
-  while (true) {
-    const key = await readKey();
-    if (key === '\r' || key === '\n' || key === ' ') { process.stdout.write(HIDE_CURSOR); return 'retry'; }
-    if (key === 'm' || key === 'M')                  { process.stdout.write(HIDE_CURSOR); return 'menu'; }
-    if (key === 'q' || key === 'Q')                  return 'quit';
-  }
-}
