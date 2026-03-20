@@ -9,7 +9,6 @@ import {
   runTimer,
   askAfterPomodoro,
   askAfterBreak,
-  askAfterCancel,
   sendNotification,
   previewSound,
 } from './timer.js';
@@ -278,12 +277,7 @@ async function runSession(taskName: string, config: Config): Promise<'quit' | 'm
 
     const result = await runTimer(config.pomodoroMin, sessionNumber, taskName, false);
 
-    if (result === 'cancelled') {
-      const next = await askAfterCancel();
-      if (next === 'quit') return 'quit';
-      if (next === 'menu') return 'menu';
-      continue;
-    }
+    if (result === 'cancelled') return 'menu';
 
     await appendPomodoro(config.logDir, taskName, currentTime(), config.pomodoroMin);
     sendNotification(config.notificationsEnabled, 'pomosh 🍅', `Pomodoro #${sessionNumber} completato!`, config.notificationSound);

@@ -57,6 +57,29 @@ function drawBar(remaining: number, total: number): string {
   return '█'.repeat(filled) + '░'.repeat(width - filled);
 }
 
+function drawSessionBar(sessionNumber: number, isBreak: boolean): string {
+  const completedToday = isBreak ? sessionNumber : sessionNumber - 1;
+  const tomato = TITLE_COLORS[0]; // '\x1b[38;2;255;120;60m'
+
+  const maxVisible = Math.max(0, Math.floor((cols() - 30) / 3));
+  const overflow   = Math.max(0, completedToday - maxVisible);
+  const visible    = completedToday - overflow;
+
+  let icons = '';
+  if (overflow > 0) icons += `${DIM}+${overflow} ${RESET}`;
+  icons += `${tomato}🍅 ${RESET}`.repeat(visible);
+
+  const current = isBreak ? '' : `  ${tomato}◉${RESET}`;
+
+  const label = isBreak
+    ? `${completedToday} done · break`
+    : completedToday === 0
+      ? `#1 · first pomodoro`
+      : `${completedToday} done · #${sessionNumber} in progress`;
+
+  return `  ${icons}${current}   ${DIM}${label}${RESET}`;
+}
+
 export function screen(...lines: string[]): string {
   return [CLEAR, titleBar(), '', ...lines].join('\n');
 }
@@ -76,6 +99,8 @@ function buildTimerScreen(
     : `Pomodoro #${sessionNumber} — ${taskName}`;
 
   return screen(
+    '',
+    drawSessionBar(sessionNumber, isBreak),
     '',
     `  ${label}`,
     '',
@@ -147,12 +172,10 @@ export async function runTimer(
     if (interrupted) {
       cleanupStdin();
       process.stdout.write(SHOW_CURSOR);
-      process.stdout.write(screen(
-        '',
-        `  ${isBreak ? 'Break' : 'Pomodoro'} interrupted.`,
-        '',
-        '  Cancel it? [y / n]',
-      ));
+      process.stdout.write(
+        buildTimerScreen(sessionNumber, taskName, remaining, minutes, isBreak) +
+        `\n\n  ${isBreak ? 'Break' : 'Pomodoro'} interrupted — cancel it? ${DIM}[y] yes   [n] no${RESET}`,
+      );
 
       while (true) {
         const key = await readKey();
@@ -240,18 +263,3 @@ export async function askAfterBreak(): Promise<'next' | 'quit' | 'menu'> {
   }
 }
 
-export async function askAfterCancel(): Promise<'retry' | 'quit' | 'menu'> {
-  process.stdout.write(screen(
-    '',
-    '  Pomodoro cancelled.',
-    '',
-    '  [enter] start over   [m] menu   [q] quit',
-  ));
-  process.stdout.write(SHOW_CURSOR);
-  while (true) {
-    const key = await readKey();
-    if (key === '\r' || key === '\n' || key === ' ') { process.stdout.write(HIDE_CURSOR); return 'retry'; }
-    if (key === 'm' || key === 'M')                  { process.stdout.write(HIDE_CURSOR); return 'menu'; }
-    if (key === 'q' || key === 'Q')                  return 'quit';
-  }
-}
