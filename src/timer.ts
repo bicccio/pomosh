@@ -24,6 +24,21 @@ export function teardownScreen(): void {
 
 function cols(): number { return process.stdout.columns || 80; }
 
+export function visibleWidth(s: string): number {
+  const clean = s.replace(/\x1b\[[0-9;]*m/g, '');
+  let w = 0;
+  for (const ch of [...clean]) {
+    w += (ch.codePointAt(0) ?? 0) > 0x1F000 ? 2 : 1;
+  }
+  return w;
+}
+
+export function summaryBox(content: string): string {
+  const inner = ` ${content} `;
+  const w = visibleWidth(inner);
+  return `  ╭${'─'.repeat(w)}╮\n  │${inner}│\n  ╰${'─'.repeat(w)}╯`;
+}
+
 // Block font for "pomosh" — each row is an array of 6 letter glyphs (6 chars each)
 const BLOCK_TITLE = [
   ['█████ ', ' ███  ', '█    █', ' ███  ', '█████ ', '█    █'],
@@ -57,9 +72,9 @@ function drawBar(remaining: number, total: number): string {
   return '█'.repeat(filled) + '░'.repeat(width - filled);
 }
 
-function drawSessionBar(sessionNumber: number, isBreak: boolean): string {
+function sessionSummaryBox(sessionNumber: number, isBreak: boolean, totalMinToday: number): string {
   const completedToday = isBreak ? sessionNumber : sessionNumber - 1;
-  const tomato = TITLE_COLORS[0]; // '\x1b[38;2;255;120;60m'
+  const tomato = TITLE_COLORS[0];
 
   const maxVisible = Math.max(0, Math.floor((cols() - 30) / 3));
   const overflow   = Math.max(0, completedToday - maxVisible);
@@ -67,21 +82,19 @@ function drawSessionBar(sessionNumber: number, isBreak: boolean): string {
 
   let icons = '';
   if (overflow > 0) icons += `${DIM}+${overflow} ${RESET}`;
-  icons += `${tomato}🍅 ${RESET}`.repeat(visible);
+  icons += `${tomato}🍅${RESET} `.repeat(visible);
 
-  const current = isBreak ? '' : `  ${tomato}◉${RESET}`;
-
+  const current = isBreak ? '' : `${tomato}◉${RESET} `;
   const label = isBreak
-    ? `${completedToday} done · break`
-    : completedToday === 0
-      ? `#1 · first pomodoro`
-      : `${completedToday} done · #${sessionNumber} in progress`;
+    ? `${completedToday} done · break · ${totalMinToday} min`
+    : `#${sessionNumber} in progress · ${totalMinToday} min`;
 
-  return `  ${icons}${current}   ${DIM}${label}${RESET}`;
+  return summaryBox(`${icons}${current}  ${label}`);
 }
 
-export function screen(...lines: string[]): string {
-  return [CLEAR, titleBar(), '', ...lines].join('\n');
+export function screen(summary: string | null, ...lines: string[]): string {
+  const mid = summary != null ? ['', summary] : [''];
+  return [CLEAR, titleBar(), ...mid, ...lines].join('\n');
 }
 
 function buildTimerScreen(
@@ -90,6 +103,7 @@ function buildTimerScreen(
   seconds: number,
   totalMin: number,
   isBreak: boolean,
+  totalMinToday: number,
 ): string {
   const mm  = String(Math.floor(seconds / 60)).padStart(2, '0');
   const ss  = String(seconds % 60).padStart(2, '0');
@@ -99,8 +113,7 @@ function buildTimerScreen(
     : `Pomodoro #${sessionNumber} — ${taskName}`;
 
   return screen(
-    '',
-    drawSessionBar(sessionNumber, isBreak),
+    sessionSummaryBox(sessionNumber, isBreak, totalMinToday),
     '',
     `  ${label}`,
     '',
@@ -137,6 +150,7 @@ export async function runTimer(
   sessionNumber: number,
   taskName: string,
   isBreak: boolean,
+  totalMinToday: number,
 ): Promise<'completed' | 'cancelled'> {
   let remaining = minutes * 60;
   let interruptResolve: (() => void) | null = null;
@@ -162,7 +176,7 @@ export async function runTimer(
   };
 
   while (remaining > 0) {
-    process.stdout.write(buildTimerScreen(sessionNumber, taskName, remaining, minutes, isBreak));
+    process.stdout.write(buildTimerScreen(sessionNumber, taskName, remaining, minutes, isBreak, totalMinToday));
 
     const interrupted = await new Promise<boolean>((resolve) => {
       const timer = setTimeout(() => { interruptResolve = null; resolve(false); }, 1000);
@@ -173,7 +187,7 @@ export async function runTimer(
       cleanupStdin();
       process.stdout.write(SHOW_CURSOR);
       process.stdout.write(
-        buildTimerScreen(sessionNumber, taskName, remaining, minutes, isBreak) +
+        buildTimerScreen(sessionNumber, taskName, remaining, minutes, isBreak, totalMinToday) +
         `\n\n  ${isBreak ? 'Break' : 'Pomodoro'} interrupted — cancel it? ${DIM}[y] yes   [n] no${RESET}`,
       );
 
@@ -193,7 +207,7 @@ export async function runTimer(
     }
   }
 
-  process.stdout.write(buildTimerScreen(sessionNumber, taskName, 0, minutes, isBreak));
+  process.stdout.write(buildTimerScreen(sessionNumber, taskName, 0, minutes, isBreak, totalMinToday));
   cleanupStdin();
   return 'completed';
 }
@@ -230,8 +244,10 @@ export async function askAfterPomodoro(
   sessionNumber: number,
   taskName: string,
   breakMin: number,
+  summary: string | null,
 ): Promise<'break' | 'next' | 'quit' | 'menu'> {
   process.stdout.write(screen(
+    summary,
     '',
     `  ✓  Pomodoro #${sessionNumber} complete! — ${taskName}`,
     '',
@@ -247,8 +263,9 @@ export async function askAfterPomodoro(
   }
 }
 
-export async function askAfterBreak(): Promise<'next' | 'quit' | 'menu'> {
+export async function askAfterBreak(summary: string | null): Promise<'next' | 'quit' | 'menu'> {
   process.stdout.write(screen(
+    summary,
     '',
     '  ✓  Break complete!',
     '',

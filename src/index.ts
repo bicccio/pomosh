@@ -11,16 +11,47 @@ import {
   askAfterBreak,
   sendNotification,
   previewSound,
+  summaryBox,
 } from './timer.js';
 
 const SHOW_CURSOR = '\x1b[?25h';
 const HIDE_CURSOR = '\x1b[?25l';
-const DIM   = '\x1b[2m';
-const RESET = '\x1b[0m';
+const DIM    = '\x1b[2m';
+const RESET  = '\x1b[0m';
+const TOMATO = '\x1b[38;2;255;120;60m';
+const MUTED  = '\x1b[38;2;130;130;130m';
 
 function currentTime(): string {
   const now = new Date();
   return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+}
+
+async function buildSummary(logDir: string): Promise<string | null> {
+  const recs = await readRecords(logDir);
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const yesterISO = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+
+  const todayRecs = recs.filter(r => r.date === todayISO);
+  if (todayRecs.length > 0) {
+    const totalMin = todayRecs.reduce((s, r) => s + r.duration_min, 0);
+    const n = todayRecs.length;
+    const tomato = '\x1b[38;2;255;120;60m';
+    const maxVisible = Math.max(0, Math.floor(((process.stdout.columns || 80) - 30) / 3));
+    const overflow = Math.max(0, n - maxVisible);
+    const visible  = n - overflow;
+    const label = `${n} · ${totalMin} min`;
+    let icons = overflow > 0 ? `${DIM}+${overflow} ${RESET}` : '';
+    icons += `${tomato}🍅${RESET} `.repeat(visible);
+    return summaryBox(`${icons}  ${label}`);
+  }
+
+  const yesterRecs = recs.filter(r => r.date === yesterISO);
+  if (yesterRecs.length > 0) {
+    const totalMin = yesterRecs.reduce((s, r) => s + r.duration_min, 0);
+    return summaryBox(`ieri: ${yesterRecs.length} 🍅 · ${totalMin} min`);
+  }
+
+  return null;
 }
 
 // ─── custom fullscreen prompts ────────────────────────────────────────────────
@@ -32,20 +63,23 @@ const MENU_OPTIONS = [
   'Exit',
 ] as const;
 
-async function showMenu(): Promise<0 | 1 | 2 | 3> {
+async function showMenu(logDir: string): Promise<0 | 1 | 2 | 3> {
+  const summary = await buildSummary(logDir);
   let idx = 0;
 
   while (true) {
-    const opts = MENU_OPTIONS.map((label, i) =>
-      i === idx ? `  \x1b[1m❯\x1b[0m ${label}` : `    ${DIM}${label}${RESET}`,
-    );
+    const opts = MENU_OPTIONS.map((label, i) => {
+      if (i === 0 && i === idx) return `  \x1b[1m❯\x1b[0m ${TOMATO}\x1b[1m${label}\x1b[0m${RESET}`;
+      if (i === 0)              return `    ${TOMATO}${label}${RESET}`;
+      if (i === idx)            return `  \x1b[1m❯ ${label}\x1b[0m`;
+      return `    ${label}`;
+    });
     process.stdout.write(screen(
-      '',
-      '  What would you like to do?',
+      summary,
       '',
       ...opts,
       '',
-      `  ${DIM}[↑↓] navigate   [enter] select   [q] quit${RESET}`,
+      `  ${MUTED}[↑↓] navigate   [enter] select   [q] quit${RESET}`,
     ));
 
     const key = await readKey();
@@ -126,6 +160,7 @@ async function showSettings(config: Config): Promise<void> {
       : `  ${DIM}[↑↓] navigate   [enter/←/→/space] edit   [esc] back${RESET}`;
 
     process.stdout.write(screen(
+      null,
       '',
       '  Settings',
       '',
@@ -203,7 +238,7 @@ async function showSettings(config: Config): Promise<void> {
   }
 }
 
-async function showTextInput(prompt: string, placeholder: string, history: string[] = []): Promise<string | null> {
+async function showTextInput(summary: string | null, prompt: string, placeholder: string, history: string[] = []): Promise<string | null> {
   let value = '';
   let historyIdx = -1;
   let savedInput = '';
@@ -212,6 +247,7 @@ async function showTextInput(prompt: string, placeholder: string, history: strin
     const display = value || `${DIM}${placeholder}${RESET}`;
     const historyHint = history.length > 0 ? `  ${DIM}[↑↓] history   [esc] menu${RESET}` : `  ${DIM}[esc] menu${RESET}`;
     process.stdout.write(screen(
+      summary,
       '',
       `  ${prompt}`,
       '',
@@ -219,6 +255,8 @@ async function showTextInput(prompt: string, placeholder: string, history: strin
       '',
       historyHint,
     ));
+    // Position cursor at end of input field (2 lines above last line, col after "  ❯ " + value)
+    process.stdout.write(`\x1b[2A\x1b[${5 + value.length}G`);
     process.stdout.write(SHOW_CURSOR);
 
     const key = await readKey();
@@ -259,6 +297,7 @@ async function showLog(config: Config): Promise<void> {
   }
 
   process.stdout.write(screen(
+    null,
     '',
     "  Today's pomodoros",
     '',
@@ -270,26 +309,37 @@ async function showLog(config: Config): Promise<void> {
   await readKey();
 }
 
+async function todayMinutes(logDir: string): Promise<number> {
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const recs = await readRecords(logDir);
+  return recs.filter(r => r.date === todayISO).reduce((s, r) => s + r.duration_min, 0);
+}
+
 async function runSession(taskName: string, config: Config): Promise<'quit' | 'menu'> {
   while (true) {
     const sessionNumber = (await countTodayPomos(config.logDir)) + 1;
     const breakMin = sessionNumber % 4 === 0 ? config.longBreakMin : config.shortBreakMin;
 
-    const result = await runTimer(config.pomodoroMin, sessionNumber, taskName, false);
+    const totalMinBefore = await todayMinutes(config.logDir);
+
+    const result = await runTimer(config.pomodoroMin, sessionNumber, taskName, false, totalMinBefore);
 
     if (result === 'cancelled') return 'menu';
 
     await appendPomodoro(config.logDir, taskName, currentTime(), config.pomodoroMin);
     sendNotification(config.notificationsEnabled, 'pomosh 🍅', `Pomodoro #${sessionNumber} completato!`, config.notificationSound);
 
-    const afterPomo = await askAfterPomodoro(sessionNumber, taskName, breakMin);
+    const postSummary = await buildSummary(config.logDir);
+    const postTotalMin = await todayMinutes(config.logDir);
+
+    const afterPomo = await askAfterPomodoro(sessionNumber, taskName, breakMin, postSummary);
     if (afterPomo === 'quit') return 'quit';
     if (afterPomo === 'menu') return 'menu';
 
     if (afterPomo === 'break') {
-      await runTimer(breakMin, sessionNumber, taskName, true);
+      await runTimer(breakMin, sessionNumber, taskName, true, postTotalMin);
       sendNotification(config.notificationsEnabled, 'pomosh', 'Pausa terminata, torna al lavoro!', config.notificationSound);
-      const afterBreak = await askAfterBreak();
+      const afterBreak = await askAfterBreak(postSummary);
       if (afterBreak === 'quit') return 'quit';
       if (afterBreak === 'menu') return 'menu';
     }
@@ -327,7 +377,7 @@ async function main() {
     let choice: 0 | 1 | 2 | 3;
 
     do {
-      choice = await showMenu();
+      choice = await showMenu(config.logDir);
 
       if (choice === 3) { teardownScreen(); process.exit(0); }
 
@@ -348,7 +398,8 @@ async function main() {
       .map(r => r.task)
       .filter(t => { if (seen.has(t)) return false; seen.add(t); return true; });
 
-    const name = await showTextInput('Task name', 'e.g. writing the readme', taskHistory);
+    const menuSummary = await buildSummary(config.logDir);
+    const name = await showTextInput(menuSummary, 'Task name', 'e.g. writing the readme', taskHistory);
     if (name === null) continue; // Ctrl+C → back to menu
 
     const outcome = await runSession(name, config);
