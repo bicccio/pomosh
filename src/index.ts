@@ -432,7 +432,7 @@ async function showLog(config: Config, initialDate?: string, withSummary = true)
   const datesWithRecords = [...new Set(allRecords.map(r => r.date))].sort();
 
   if (datesWithRecords.length === 0) {
-    process.stdout.write(screen(summary, '', `  ${DIM}No waves yet.${RESET}`, '', `  ${DIM}[any key] back${RESET}`));
+    process.stdout.write(screen(summary, '', sectionHeader('Details'), '', `  ${DIM}No waves yet.${RESET}`, '', `  ${DIM}[any key] back${RESET}`));
     await readKey();
     return;
   }
@@ -494,7 +494,7 @@ async function showDayPicker(config: Config): Promise<void> {
   const datesWithRecords = [...new Set(allRecords.map(r => r.date))].sort().reverse();
 
   if (datesWithRecords.length === 0) {
-    process.stdout.write(screen(null, '', `  ${DIM}No waves yet.${RESET}`, '', `  ${DIM}[any key] back${RESET}`));
+    process.stdout.write(screen(null, '', sectionHeader('Details'), '', `  ${DIM}No waves yet.${RESET}`, '', `  ${DIM}[any key] back${RESET}`));
     await readKey();
     return;
   }
