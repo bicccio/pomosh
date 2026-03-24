@@ -28,31 +28,36 @@ function currentTime(): string {
 
 async function buildSummary(logDir: string): Promise<string | null> {
   const recs = await readRecords(logDir);
+
+  if (recs.length === 0) {
+    return summaryBox(['No pomos yet — start your first! 🍅'], 'pomosh');
+  }
+
   const todayISO = new Date().toISOString().slice(0, 10);
   const yesterISO = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
 
-  const todayRecs = recs.filter(r => r.date === todayISO);
-  if (todayRecs.length > 0) {
-    const totalMin = todayRecs.reduce((s, r) => s + r.duration_min, 0);
-    const n = todayRecs.length;
-    const tomato = '\x1b[38;2;255;120;60m';
-    const maxVisible = Math.max(0, Math.floor(((process.stdout.columns || 80) - 30) / 3));
-    const overflow = Math.max(0, n - maxVisible);
-    const visible  = n - overflow;
-    const label = `${n} done · ${totalMin} min`;
-    let icons = overflow > 0 ? `${DIM}+${overflow} ${RESET}` : '';
-    icons += `${tomato}🍅${RESET} `.repeat(visible);
-    return summaryBox([icons, '', label], 'today', '[d] details');
+  const lastISO = recs.reduce((max, r) => r.date > max ? r.date : max, recs[0].date);
+  const lastRecs = recs.filter(r => r.date === lastISO);
+  const totalMin = lastRecs.reduce((s, r) => s + r.duration_min, 0);
+  const n = lastRecs.length;
+
+  let title: string;
+  if (lastISO === todayISO)         title = 'today';
+  else if (lastISO === yesterISO)   title = 'last · yesterday';
+  else {
+    const d = new Date(lastISO + 'T00:00:00');
+    title = `last · ${d.toLocaleString('en', { month: 'short', day: 'numeric' })}`;
   }
 
-  const yesterRecs = recs.filter(r => r.date === yesterISO);
-  if (yesterRecs.length > 0) {
-    const totalMin = yesterRecs.reduce((s, r) => s + r.duration_min, 0);
-    const tomato = '\x1b[38;2;255;120;60m';
-    return summaryBox([`${tomato}🍅${RESET} `.repeat(yesterRecs.length), '', `${yesterRecs.length} done · ${totalMin} min`], 'yesterday');
-  }
+  const tomato = '\x1b[38;2;255;120;60m';
+  const maxVisible = Math.max(0, Math.floor(((process.stdout.columns || 80) - 30) / 3));
+  const overflow = Math.max(0, n - maxVisible);
+  const visible  = n - overflow;
+  const countLabel = `${n} done · ${totalMin} min`;
+  let icons = overflow > 0 ? `${DIM}+${overflow} ${RESET}` : '';
+  icons += `${tomato}🍅${RESET} `.repeat(visible);
 
-  return null;
+  return summaryBox([icons, '', countLabel], title, '[d] details');
 }
 
 // ─── custom fullscreen prompts ────────────────────────────────────────────────
@@ -60,11 +65,12 @@ async function buildSummary(logDir: string): Promise<string | null> {
 const MENU_OPTIONS = [
   'Start a new pomodoro',
   'View stats',
+  'View details',
   'Settings',
   'Exit',
 ] as const;
 
-async function showMenu(logDir: string): Promise<0 | 1 | 2 | 3 | 'log'> {
+async function showMenu(logDir: string): Promise<0 | 1 | 2 | 3 | 4 | 'log'> {
   const summary = await buildSummary(logDir);
   let idx = 0;
 
@@ -80,15 +86,15 @@ async function showMenu(logDir: string): Promise<0 | 1 | 2 | 3 | 'log'> {
       '',
       ...opts,
       '',
-      `  ${MUTED}[↑↓] navigate   [enter] select   [q] quit${RESET}`,
+      `  ${MUTED}[↑↓] navigate   [enter] select   [d] details   [q] quit${RESET}`,
     ));
 
     const key = await readKey();
-    if (key === '\x1b[A' && idx > 0)                        idx--;
-    else if (key === '\x1b[B' && idx < MENU_OPTIONS.length - 1) idx++;
-    else if (key === '\r' || key === '\n')                   return idx as 0 | 1 | 2 | 3;
-    else if (key === 'q' || key === 'Q')                     return 3;
-    else if (key === 'd' || key === 'D')                     return 'log';
+    if (key === '\x1b[A' && idx > 0)                             idx--;
+    else if (key === '\x1b[B' && idx < MENU_OPTIONS.length - 1)  idx++;
+    else if (key === '\r' || key === '\n')                        return idx as 0 | 1 | 2 | 3 | 4;
+    else if (key === 'q' || key === 'Q')                         return 4;
+    else if (key === 'd' || key === 'D')                         return 'log';
   }
 }
 
@@ -265,61 +271,90 @@ async function showStats(config: Config): Promise<void> {
   function render() {
     const now = new Date();
     const todayISO = toISO(now);
-    let days: Date[] = [];
     let title: string;
+    let barLines: string[];
+    let totalPomos: number;
+    let totalMin: number;
 
     if (mode === 'week') {
       const dow = (now.getDay() + 6) % 7; // 0=Monday
       const monday = new Date(now);
       monday.setDate(now.getDate() - dow + offset * 7);
       monday.setHours(0, 0, 0, 0);
+      const days: Date[] = [];
       for (let i = 0; i < 7; i++) {
         const d = new Date(monday);
         d.setDate(monday.getDate() + i);
         days.push(d);
       }
-      const fmt = (d: Date) => `${DAY_LABELS[(d.getDay())]} ${d.toLocaleString('en', { month: 'short' })} ${d.getDate()}`;
+      const fmt = (d: Date) => `${DAY_LABELS[d.getDay()]} ${d.toLocaleString('en', { month: 'short' })} ${d.getDate()}`;
       title = `  Weekly Stats — ${fmt(days[0])} – ${fmt(days[6])}`;
+
+      const counts = days.map(d => countByDate.get(toISO(d)) ?? 0);
+      const maxCount = Math.max(...counts, 1);
+      totalPomos = counts.reduce((a, b) => a + b, 0);
+      totalMin = days.reduce((s, d) => s + (minByDate.get(toISO(d)) ?? 0), 0);
+
+      barLines = days.map((d, i) => {
+        const iso = toISO(d);
+        const count = counts[i];
+        const filled = Math.round((count / maxCount) * BAR_WIDTH);
+        const bar = '█'.repeat(filled) + '░'.repeat(BAR_WIDTH - filled);
+        const isToday = iso === todayISO;
+        const label = `${DAY_LABELS[d.getDay()]} ${String(d.getDate()).padStart(2)}`;
+        const countStr = String(count).padStart(2);
+        if (isToday)          return `  ${BOLD}${TOMATO}${label}  ${bar}  ${countStr} 🍅${RESET}`;
+        else if (count === 0) return `  ${DIM}${label}  ${bar}  ${countStr} 🍅${RESET}`;
+        else                  return `  ${label}  ${bar}  ${countStr} 🍅`;
+      });
+
     } else {
       const base = new Date(now.getFullYear(), now.getMonth() + offset, 1);
-      const daysInMonth = new Date(base.getFullYear(), base.getMonth() + 1, 0).getDate();
-      for (let i = 1; i <= daysInMonth; i++) {
-        days.push(new Date(base.getFullYear(), base.getMonth(), i));
+      const year = base.getFullYear();
+      const month = base.getMonth();
+      title = `  Monthly Stats — ${MONTH_NAMES[month]} ${year}`;
+
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const days: Date[] = [];
+      for (let i = 1; i <= daysInMonth; i++) days.push(new Date(year, month, i));
+
+      const counts = days.map(d => countByDate.get(toISO(d)) ?? 0);
+      const maxCount = Math.max(...counts, 1);
+      totalPomos = counts.reduce((a, b) => a + b, 0);
+      totalMin = days.reduce((s, d) => s + (minByDate.get(toISO(d)) ?? 0), 0);
+
+      const SPARK_HEIGHT = 8;
+      const chartRows: string[] = [];
+      for (let row = SPARK_HEIGHT - 1; row >= 0; row--) {
+        let line = '  ';
+        for (let i = 0; i < days.length; i++) {
+          const iso = toISO(days[i]);
+          const count = counts[i];
+          const isToday = iso === todayISO;
+          const filledRows = count === 0 ? 0 : Math.max(1, Math.ceil((count / maxCount) * SPARK_HEIGHT));
+          const filled = row < filledRows;
+          if (filled) {
+            line += isToday ? `${BOLD}${TOMATO}██${RESET}` : '██';
+          } else {
+            line += isToday ? `${BOLD}${TOMATO}░░${RESET}` : `${DIM}░░${RESET}`;
+          }
+        }
+        chartRows.push(line);
       }
-      title = `  Monthly Stats — ${MONTH_NAMES[base.getMonth()]} ${base.getFullYear()}`;
+
+      const axisChars = Array(daysInMonth * 2).fill(' ') as string[];
+      for (const d of [1, 5, 10, 15, 20, 25, daysInMonth]) {
+        if (d < 1 || d > daysInMonth) continue;
+        const pos = (d - 1) * 2;
+        const label = String(d);
+        for (let j = 0; j < label.length; j++) axisChars[pos + j] = label[j];
+      }
+      const axis = `  ${DIM}${axisChars.join('')}${RESET}`;
+      barLines = [...chartRows, axis];
     }
 
-    const counts = days.map(d => countByDate.get(toISO(d)) ?? 0);
-    const maxCount = Math.max(...counts, 1);
-    const totalPomos = counts.reduce((a, b) => a + b, 0);
-    const totalMin = days.reduce((s, d) => s + (minByDate.get(toISO(d)) ?? 0), 0);
-
-    const barLines = days.map((d, i) => {
-      const iso = toISO(d);
-      const count = counts[i];
-      const filled = Math.round((count / maxCount) * BAR_WIDTH);
-      const bar = '█'.repeat(filled) + '░'.repeat(BAR_WIDTH - filled);
-      const isToday = iso === todayISO;
-
-      let label: string;
-      if (mode === 'week') {
-        label = `${DAY_LABELS[d.getDay()]} ${String(d.getDate()).padStart(2)}`;
-      } else {
-        label = String(d.getDate()).padStart(2);
-      }
-
-      const countStr = `${count} 🍅`;
-      if (isToday) {
-        return `  ${BOLD}${TOMATO}${label}  ${bar}  ${countStr}${RESET}`;
-      } else if (count === 0) {
-        return `  ${DIM}${label}  ${bar}  ${countStr}${RESET}`;
-      } else {
-        return `  ${label}  ${bar}  ${countStr}`;
-      }
-    });
-
     const nextDim = offset === 0 ? DIM : '';
-    const footer = `  ${DIM}[w] weekly  [m] monthly  [←] prev  ${nextDim}[→] next${DIM}  [q] back${RESET}`;
+    const footer = `  ${DIM}[w] weekly  [m] monthly  [←] prev  ${nextDim}[→] next${DIM}  [b] back${RESET}`;
     const total = `  Total: ${totalPomos} 🍅  ${totalMin} min`;
 
     process.stdout.write(screen(null, '', title, '', ...barLines, '', total, '', footer));
@@ -332,7 +367,7 @@ async function showStats(config: Config): Promise<void> {
     else if (key === 'm' || key === 'M') { mode = 'month'; offset = 0; }
     else if (key === '\x1b[D')        offset--;
     else if (key === '\x1b[C' && offset < 0) offset++;
-    else if (key === 'q' || key === 'Q' || key === '\x1b') return;
+    else if (key === 'b' || key === 'B' || key === '\x1b') return;
   }
 }
 
@@ -381,30 +416,167 @@ async function showTextInput(summary: string | null, prompt: string, placeholder
   }
 }
 
-async function showLog(config: Config): Promise<void> {
-  const today = new Date();
-  const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-  const allRecords = await readRecords(config.logDir);
-  const records = allRecords.filter(r => r.date === todayISO);
+function formatDateLabel(iso: string): string {
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const yesterISO = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  if (iso === todayISO) return 'today';
+  if (iso === yesterISO) return 'yesterday';
+  const d = new Date(iso + 'T00:00:00');
+  return d.toLocaleString('en', { weekday: 'short', month: 'short', day: 'numeric' });
+}
 
-  let lines: string[];
-  if (records.length === 0) {
-    lines = [`  ${DIM}No pomos today.${RESET}`];
-  } else {
-    lines = records.map((r, i) => `  ${i + 1})  ${r.time}  ${r.duration_min} min  ${r.task}`);
+async function showLog(config: Config, initialDate?: string, withSummary = true): Promise<void> {
+  const summary = withSummary ? await buildSummary(config.logDir) : null;
+  const allRecords = await readRecords(config.logDir);
+  const datesWithRecords = [...new Set(allRecords.map(r => r.date))].sort();
+
+  if (datesWithRecords.length === 0) {
+    process.stdout.write(screen(summary, '', `  ${DIM}No pomos yet.${RESET}`, '', `  ${DIM}[any key] back${RESET}`));
+    await readKey();
+    return;
   }
 
-  process.stdout.write(screen(
-    null,
-    '',
-    "  Today's pomodoros",
-    '',
-    ...lines,
-    '',
-    `  ${DIM}[any key] back${RESET}`,
-  ));
+  let currentISO = initialDate && datesWithRecords.includes(initialDate)
+    ? initialDate
+    : datesWithRecords[datesWithRecords.length - 1];
 
-  await readKey();
+  while (true) {
+    const idxInDates = datesWithRecords.indexOf(currentISO);
+    const hasPrev = idxInDates > 0;
+    const hasNext = idxInDates < datesWithRecords.length - 1;
+    const records = allRecords.filter(r => r.date === currentISO);
+
+    const lines: string[] = records.length === 0
+      ? [`  ${DIM}No pomos.${RESET}`]
+      : (() => {
+          const pad    = String(records.length).length;
+          const durPad = Math.max(...records.map(r => String(r.duration_min).length));
+          return records.map((r, i) =>
+            `  ${DIM}${String(i + 1).padStart(pad)} –${RESET}  ${TOMATO}${r.time}${RESET}  ${DIM}${String(r.duration_min).padStart(durPad)} min${RESET}  ${BOLD}${r.task}${RESET}`
+          );
+        })();
+
+    const prevDim = hasPrev ? '' : DIM;
+    const nextDim = hasNext ? '' : DIM;
+    const footer = `  ${prevDim}[←] prev${RESET}  ${nextDim}[→] next${RESET}  ${DIM}[b] back${RESET}`;
+
+    process.stdout.write(screen(
+      summary,
+      '',
+      `  Details — ${formatDateLabel(currentISO)}`,
+      '',
+      ...lines,
+      '',
+      footer,
+    ));
+
+    const key = await readKey();
+    if      (key === '\x1b[D' && hasPrev) currentISO = datesWithRecords[idxInDates - 1];
+    else if (key === '\x1b[C' && hasNext) currentISO = datesWithRecords[idxInDates + 1];
+    else if (key === 'b' || key === 'B' || key === '\x1b') return;
+  }
+}
+
+function jumpToMonth(dates: string[], currentIdx: number, direction: -1 | 1): number {
+  const currentMonth = dates[currentIdx].slice(0, 7);
+  for (let i = currentIdx + direction; i >= 0 && i < dates.length; i += direction) {
+    if (dates[i].slice(0, 7) !== currentMonth) return i;
+  }
+  return currentIdx;
+}
+
+async function showDayPicker(config: Config): Promise<void> {
+  const allRecords = await readRecords(config.logDir);
+  // most recent first
+  const datesWithRecords = [...new Set(allRecords.map(r => r.date))].sort().reverse();
+
+  if (datesWithRecords.length === 0) {
+    process.stdout.write(screen(null, '', `  ${DIM}No pomos yet.${RESET}`, '', `  ${DIM}[any key] back${RESET}`));
+    await readKey();
+    return;
+  }
+
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const defaultIdx = datesWithRecords.includes(todayISO) ? datesWithRecords.indexOf(todayISO) : 0;
+  let idx = defaultIdx;
+
+  const MAX_VISIBLE = 10;
+
+  while (true) {
+    // Build display items: date rows interspersed with month separators.
+    // We work on the full list to build a "virtual" display list, then window it.
+    type DisplayItem =
+      | { kind: 'date'; dateIdx: number; iso: string }
+      | { kind: 'month'; label: string };
+
+    const allItems: DisplayItem[] = [];
+    let lastMonth = '';
+    for (let i = 0; i < datesWithRecords.length; i++) {
+      const iso = datesWithRecords[i];
+      const month = iso.slice(0, 7);
+      if (month !== lastMonth) {
+        const d = new Date(iso + 'T00:00:00');
+        allItems.push({ kind: 'month', label: `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}` });
+        lastMonth = month;
+      }
+      allItems.push({ kind: 'date', dateIdx: i, iso });
+    }
+
+    // Find the virtual index of the selected date
+    const selectedVirtual = allItems.findIndex(it => it.kind === 'date' && it.dateIdx === idx);
+
+    // Scroll so the selected item is centered in the window
+    const scrollOffset = Math.max(0, Math.min(
+      selectedVirtual - Math.floor(MAX_VISIBLE / 2),
+      allItems.length - MAX_VISIBLE,
+    ));
+    const visibleItems = allItems.slice(scrollOffset, scrollOffset + MAX_VISIBLE);
+
+    const maxCount  = Math.max(...datesWithRecords.map(iso => allRecords.filter(r => r.date === iso).length));
+    const maxMin    = Math.max(...datesWithRecords.map(iso => allRecords.filter(r => r.date === iso).reduce((s, r) => s + r.duration_min, 0)));
+    const countPad  = String(maxCount).length;
+    const minPad    = String(maxMin).length;
+
+    const rows = visibleItems.map(item => {
+      if (item.kind === 'month') {
+        return `  ${DIM}── ${item.label} ──${RESET}`;
+      }
+      const recs = allRecords.filter(r => r.date === item.iso);
+      const count = recs.length;
+      const totalMin = recs.reduce((s, r) => s + r.duration_min, 0);
+      const label = formatDateLabel(item.iso);
+      const info = `${String(count).padStart(countPad)} 🍅  ${String(totalMin).padStart(minPad)} min`;
+      if (item.dateIdx === idx) return `  ${BOLD}❯ ${label.padEnd(20)} ${info}${RESET}`;
+      return `    ${DIM}${label.padEnd(20)}${RESET} ${info}`;
+    });
+
+    const hasScrollUp   = scrollOffset > 0;
+    const hasScrollDown = scrollOffset + MAX_VISIBLE < allItems.length;
+    const scrollHint = hasScrollUp || hasScrollDown
+      ? `  ${DIM}${hasScrollUp ? '↑ ' : '  '}${datesWithRecords.length} days${hasScrollDown ? ' ↓' : '  '}${RESET}`
+      : '';
+
+    process.stdout.write(screen(
+      null,
+      '',
+      '  Select a day',
+      '',
+      ...rows,
+      ...(scrollHint ? [scrollHint] : []),
+      '',
+      `  ${DIM}[↑↓] day   [←→] month   [enter] view   [b] back${RESET}`,
+    ));
+
+    const key = await readKey();
+    if      (key === '\x1b[A' && idx > 0)                            idx--;
+    else if (key === '\x1b[B' && idx < datesWithRecords.length - 1)  idx++;
+    else if (key === '\x1b[C')                                        idx = jumpToMonth(datesWithRecords, idx, -1);
+    else if (key === '\x1b[D')                                        idx = jumpToMonth(datesWithRecords, idx, 1);
+    else if (key === '\r' || key === '\n') {
+      await showLog(config, datesWithRecords[idx], false);
+    }
+    else if (key === 'b' || key === 'B' || key === '\x1b')           return;
+  }
 }
 
 async function todayMinutes(logDir: string): Promise<number> {
@@ -472,24 +644,16 @@ async function main() {
 
   // Main loop: menu → action → back to menu
   while (true) {
-    let choice: 0 | 1 | 2 | 3 | 'log';
+    let choice: 0 | 1 | 2 | 3 | 4 | 'log';
 
     do {
       choice = await showMenu(config.logDir);
 
-      if (choice === 3) { teardownScreen(); process.exit(0); }
-
-      if (choice === 'log') {
-        await showLog(config);
-      }
-
-      if (choice === 1) {
-        await showStats(config);
-      }
-
-      if (choice === 2) {
-        await showSettings(config);
-      }
+      if (choice === 4)     { teardownScreen(); process.exit(0); }
+      if (choice === 'log') { await showLog(config); }
+      if (choice === 1)     { await showStats(config); }
+      if (choice === 2)     { await showDayPicker(config); }
+      if (choice === 3)     { await showSettings(config); }
     } while (choice !== 0);
 
     const allRecords = await readRecords(config.logDir);
