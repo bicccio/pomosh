@@ -4,7 +4,7 @@ import { homedir } from 'os';
 import { join } from 'path';
 
 export interface Config {
-  pomodoroMin: number;
+  waveMin: number;
   shortBreakMin: number;
   longBreakMin: number;
   notificationsEnabled: boolean;
@@ -14,23 +14,23 @@ export interface Config {
 }
 
 const DEFAULT_CONFIG: Config = {
-  pomodoroMin: 25,
+  waveMin: 25,
   shortBreakMin: 5,
   longBreakMin: 15,
   notificationsEnabled: true,
   notificationSound: 'default',
-  logDir: join(homedir(), '.pomosh', 'pomos'),
-  configPath: join(homedir(), '.pomosh', 'pomosh.cfg'),
+  logDir: join(homedir(), '.onda', 'waves'),
+  configPath: join(homedir(), '.onda', 'onda.cfg'),
 };
 
 export async function ensureDirectories(logDir: string): Promise<void> {
-  await mkdir(join(homedir(), '.pomosh'), { recursive: true });
+  await mkdir(join(homedir(), '.onda'), { recursive: true });
   await mkdir(logDir, { recursive: true });
 }
 
 export async function saveConfig(config: Config): Promise<void> {
   const content = [
-    `pomodoro_min = ${config.pomodoroMin}`,
+    `wave_min = ${config.waveMin}`,
     `short_break_min = ${config.shortBreakMin}`,
     `long_break_min = ${config.longBreakMin}`,
     `notifications_enabled = ${config.notificationsEnabled ? 'true' : 'false'}`,
@@ -59,7 +59,7 @@ export async function loadConfig(configPath?: string): Promise<Config> {
       if (eqIdx === -1) continue;
       const key = trimmed.slice(0, eqIdx).trim();
       const val = trimmed.slice(eqIdx + 1).trim();
-      if (key === 'pomodoro_min') cfg.pomodoroMin = parseInt(val, 10) || cfg.pomodoroMin;
+      if (key === 'wave_min') cfg.waveMin = parseInt(val, 10) || cfg.waveMin;
       if (key === 'short_break_min') cfg.shortBreakMin = parseInt(val, 10) || cfg.shortBreakMin;
       if (key === 'long_break_min') cfg.longBreakMin = parseInt(val, 10) || cfg.longBreakMin;
       if (key === 'notifications_enabled') cfg.notificationsEnabled = val === 'true';

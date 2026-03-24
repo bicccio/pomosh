@@ -11,41 +11,41 @@ function todayISO(): string {
 }
 
 function logFile(logDir: string): string {
-  return join(logDir, 'pomosh.jsonl');
+  return join(logDir, 'onda.jsonl');
 }
 
-interface PomoRecord {
+interface WaveRecord {
   date: string;
   time: string;
   duration_min: number;
   task: string;
 }
 
-async function readRecords(logDir: string): Promise<PomoRecord[]> {
+async function readRecords(logDir: string): Promise<WaveRecord[]> {
   const filePath = logFile(logDir);
   if (!existsSync(filePath)) return [];
   const content = await readFile(filePath, 'utf-8');
   return content
     .split('\n')
     .filter(l => l.trim() !== '')
-    .map(l => JSON.parse(l) as PomoRecord);
+    .map(l => JSON.parse(l) as WaveRecord);
 }
 
-export async function countTodayPomos(logDir: string): Promise<number> {
+export async function countTodayWaves(logDir: string): Promise<number> {
   const today = todayISO();
   const records = await readRecords(logDir);
   return records.filter(r => r.date === today).length;
 }
 
-export async function appendPomodoro(logDir: string, taskName: string, time: string, durationMin: number): Promise<void> {
+export async function appendWave(logDir: string, taskName: string, time: string, durationMin: number): Promise<void> {
   const date = todayISO();
-  const record: PomoRecord = { date, time, duration_min: durationMin, task: taskName };
+  const record: WaveRecord = { date, time, duration_min: durationMin, task: taskName };
   await appendFile(logFile(logDir), JSON.stringify(record) + '\n');
 }
 
-export async function listPomodoros(logDir: string, date?: string): Promise<void> {
+export async function listWaves(logDir: string, date?: string): Promise<void> {
   const records = await readRecords(logDir);
-  let filtered: PomoRecord[];
+  let filtered: WaveRecord[];
 
   if (date) {
     // CLI passes YYYYMMDD, convert to YYYY-MM-DD
@@ -56,7 +56,7 @@ export async function listPomodoros(logDir: string, date?: string): Promise<void
   }
 
   if (filtered.length === 0) {
-    console.log(date ? 'No pomos in this date' : 'No pomos today');
+    console.log(date ? 'No waves on this date' : 'No waves today');
     return;
   }
 
@@ -65,4 +65,4 @@ export async function listPomodoros(logDir: string, date?: string): Promise<void
   }
 }
 
-export { PomoRecord, readRecords };
+export { WaveRecord, readRecords };

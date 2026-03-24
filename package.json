@@ -1,9 +1,9 @@
 {
-  "name": "pomosh",
+  "name": "onda",
   "version": "2.0.0",
   "type": "module",
   "bin": {
-    "pomosh": "./dist/index.js"
+    "onda": "./dist/index.js"
   },
   "scripts": {
     "dev": "tsx src/index.ts",

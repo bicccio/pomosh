@@ -17,23 +17,23 @@ export function parseCli(argv: string[]): ParsedCli {
   const program = new Command();
 
   program
-    .name('pomosh')
-    .usage('[-lh] [-L DATE] [-d CONFIG_FILE] [-g LOG_DIRECTORY] [pomodoro_name]')
-    .description('A simple Pomodoro timer')
-    .argument('[pomodoro_name]', 'name of the pomodoro task')
-    .option('-l', 'list today pomos')
-    .option('-L <date>', 'list DATE pomos. DATE must be in YYYYMMDD format')
-    .option('-d <config_file>', 'use CONFIG_FILE other than default ~/.pomosh/pomosh.cfg')
-    .option('-g <log_directory>', 'use LOG_DIRECTORY other than default ~/.pomosh/pomos/')
+    .name('onda')
+    .usage('[-lh] [-L DATE] [-d CONFIG_FILE] [-g LOG_DIRECTORY] [wave_name]')
+    .description('A minimal focus timer')
+    .argument('[wave_name]', 'name of the wave task')
+    .option('-l', 'list today waves')
+    .option('-L <date>', 'list DATE waves. DATE must be in YYYYMMDD format')
+    .option('-d <config_file>', 'use CONFIG_FILE other than default ~/.onda/onda.cfg')
+    .option('-g <log_directory>', 'use LOG_DIRECTORY other than default ~/.onda/waves/')
     .option('-c <calendar>', 'if enabled specify the calendar name')
     .helpOption('-h, --help', 'print this help')
     .addHelpText('after', `
 Configuration:
-    POMO_HOME               the Pomosh home directory.
-    POMO_LOG                the logs directory.
-    POMO_CONFIG=CONFIG_FILE same as option -d CONFIG_FILE.
+    ONDA_HOME               the Onda home directory.
+    ONDA_LOG                the logs directory.
+    ONDA_CONFIG=CONFIG_FILE same as option -d CONFIG_FILE.
 
-    pomodoro_min            pomodoro duration in minutes (default 25).
+    wave_min                wave duration in minutes (default 25).
     short_break_min         short break duration in minutes (default 5).
     long_break_min          long break duration in minutes (default 15).
 

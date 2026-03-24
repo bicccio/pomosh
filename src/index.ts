@@ -1,13 +1,13 @@
 import { parseCli } from './cli.js';
 import { loadConfig, saveConfig, ensureDirectories, Config } from './config.js';
-import { countTodayPomos, appendPomodoro, readRecords, listPomodoros } from './logger.js';
+import { countTodayWaves, appendWave, readRecords, listWaves } from './logger.js';
 import {
   setupScreen,
   teardownScreen,
   screen,
   readKey,
   runTimer,
-  askAfterPomodoro,
+  askAfterWave,
   askAfterBreak,
   sendNotification,
   previewSound,
@@ -19,7 +19,7 @@ const SHOW_CURSOR = '\x1b[?25h';
 const HIDE_CURSOR = '\x1b[?25l';
 const DIM    = '\x1b[2m';
 const RESET  = '\x1b[0m';
-const TOMATO = '\x1b[38;2;255;120;60m';
+const WAVE_COLOR = '\x1b[38;2;40;190;220m';
 const MUTED  = '\x1b[38;2;130;130;130m';
 
 function currentTime(): string {
@@ -31,7 +31,7 @@ async function buildSummary(logDir: string): Promise<string | null> {
   const recs = await readRecords(logDir);
 
   if (recs.length === 0) {
-    return summaryBox(['No pomos yet — start your first! 🍅'], 'pomosh');
+    return summaryBox(['No waves yet — start your first! 🌊'], 'onda');
   }
 
   const todayISO = new Date().toISOString().slice(0, 10);
@@ -50,13 +50,13 @@ async function buildSummary(logDir: string): Promise<string | null> {
     title = `last · ${d.toLocaleString('en', { month: 'short', day: 'numeric' })}`;
   }
 
-  const tomato = '\x1b[38;2;255;120;60m';
+  const tomato = '\x1b[38;2;40;190;220m';
   const maxVisible = Math.max(0, Math.floor(((process.stdout.columns || 80) - 30) / 3));
   const overflow = Math.max(0, n - maxVisible);
   const visible  = n - overflow;
   const countLabel = `${n} done · ${totalMin} min`;
   let icons = overflow > 0 ? `${DIM}+${overflow} ${RESET}` : '';
-  icons += `${tomato}🍅${RESET} `.repeat(visible);
+  icons += `${tomato}🌊${RESET} `.repeat(visible);
 
   return summaryBox([icons, '', countLabel], title, '[d] details');
 }
@@ -64,7 +64,7 @@ async function buildSummary(logDir: string): Promise<string | null> {
 // ─── custom fullscreen prompts ────────────────────────────────────────────────
 
 const MENU_OPTIONS = [
-  'Start a new pomodoro',
+  'Start a new wave',
   'Stats',
   'Details',
   'Settings',
@@ -77,8 +77,8 @@ async function showMenu(logDir: string): Promise<0 | 1 | 2 | 3 | 4 | 'log'> {
 
   while (true) {
     const opts = MENU_OPTIONS.map((label, i) => {
-      if (i === 0 && i === idx) return `  \x1b[1m❯\x1b[0m ${TOMATO}\x1b[1m${label}\x1b[0m${RESET}`;
-      if (i === 0)              return `    ${TOMATO}${label}${RESET}`;
+      if (i === 0 && i === idx) return `  \x1b[1m❯\x1b[0m ${WAVE_COLOR}\x1b[1m${label}\x1b[0m${RESET}`;
+      if (i === 0)              return `    ${WAVE_COLOR}${label}${RESET}`;
       if (i === idx)            return `  \x1b[1m❯ ${label}\x1b[0m`;
       return `    ${label}`;
     });
@@ -102,13 +102,13 @@ async function showMenu(logDir: string): Promise<0 | 1 | 2 | 3 | 4 | 'log'> {
 const NOTIFICATION_SOUNDS = ['default', 'Basso', 'Blow', 'Bottle', 'Frog', 'Funk', 'Glass', 'Hero', 'Morse', 'Ping', 'Pop', 'Purr', 'Sosumi', 'Submarine', 'Tink'];
 
 async function showSettings(config: Config): Promise<void> {
-  type NumericField = { kind: 'number'; label: string; key: 'pomodoroMin' | 'shortBreakMin' | 'longBreakMin' };
+  type NumericField = { kind: 'number'; label: string; key: 'waveMin' | 'shortBreakMin' | 'longBreakMin' };
   type BoolField    = { kind: 'bool';   label: string; key: 'notificationsEnabled' };
   type CycleField   = { kind: 'cycle';  label: string; key: 'notificationSound'; options: string[] };
   type Field = NumericField | BoolField | CycleField;
 
   const fields: Field[] = [
-    { kind: 'number', label: 'Pomodoro',       key: 'pomodoroMin',         },
+    { kind: 'number', label: 'Wave',            key: 'waveMin',             },
     { kind: 'number', label: 'Short break',    key: 'shortBreakMin',       },
     { kind: 'number', label: 'Long break',     key: 'longBreakMin',        },
     { kind: 'bool',   label: 'Notifications',  key: 'notificationsEnabled' },
@@ -116,7 +116,7 @@ async function showSettings(config: Config): Promise<void> {
   ];
 
   const original = {
-    pomodoroMin:          config.pomodoroMin,
+    waveMin:              config.waveMin,
     shortBreakMin:        config.shortBreakMin,
     longBreakMin:         config.longBreakMin,
     notificationsEnabled: config.notificationsEnabled,
@@ -187,7 +187,7 @@ async function showSettings(config: Config): Promise<void> {
     const currentField = fields[idx];
 
     const hasChanges = () =>
-      config.pomodoroMin          !== original.pomodoroMin          ||
+      config.waveMin              !== original.waveMin              ||
       config.shortBreakMin        !== original.shortBreakMin        ||
       config.longBreakMin         !== original.longBreakMin         ||
       config.notificationsEnabled !== original.notificationsEnabled  ||
@@ -304,9 +304,9 @@ async function showStats(config: Config): Promise<void> {
         const isToday = iso === todayISO;
         const label = `${DAY_LABELS[d.getDay()]} ${String(d.getDate()).padStart(2)}`;
         const countStr = String(count).padStart(2);
-        if (isToday)          return `  ${BOLD}${TOMATO}${label}  ${bar}  ${countStr} 🍅${RESET}`;
-        else if (count === 0) return `  ${DIM}${label}  ${bar}  ${countStr} 🍅${RESET}`;
-        else                  return `  ${label}  ${bar}  ${countStr} 🍅`;
+        if (isToday)          return `  ${BOLD}${WAVE_COLOR}${label}  ${bar}  ${countStr} 🌊${RESET}`;
+        else if (count === 0) return `  ${DIM}${label}  ${bar}  ${countStr} 🌊${RESET}`;
+        else                  return `  ${label}  ${bar}  ${countStr} 🌊`;
       });
 
     } else {
@@ -335,9 +335,9 @@ async function showStats(config: Config): Promise<void> {
           const filledRows = count === 0 ? 0 : Math.max(1, Math.ceil((count / maxCount) * SPARK_HEIGHT));
           const filled = row < filledRows;
           if (filled) {
-            line += isToday ? `${BOLD}${TOMATO}██${RESET}` : '██';
+            line += isToday ? `${BOLD}${WAVE_COLOR}██${RESET}` : '██';
           } else {
-            line += isToday ? `${BOLD}${TOMATO}░░${RESET}` : `${DIM}░░${RESET}`;
+            line += isToday ? `${BOLD}${WAVE_COLOR}░░${RESET}` : `${DIM}░░${RESET}`;
           }
         }
         chartRows.push(line);
@@ -356,7 +356,7 @@ async function showStats(config: Config): Promise<void> {
 
     const nextDim = offset === 0 ? DIM : '';
     const footer = `  ${DIM}[w] weekly  [m] monthly  [←] prev  ${nextDim}[→] next${DIM}  [b] back${RESET}`;
-    const total = `  Total: ${totalPomos} 🍅  ${totalMin} min`;
+    const total = `  Total: ${totalPomos} 🌊  ${totalMin} min`;
 
     process.stdout.write(screen(null, '', sectionHeader('Stats'), '', subtitle, '', ...barLines, '', total, '', footer));
   }
@@ -432,7 +432,7 @@ async function showLog(config: Config, initialDate?: string, withSummary = true)
   const datesWithRecords = [...new Set(allRecords.map(r => r.date))].sort();
 
   if (datesWithRecords.length === 0) {
-    process.stdout.write(screen(summary, '', `  ${DIM}No pomos yet.${RESET}`, '', `  ${DIM}[any key] back${RESET}`));
+    process.stdout.write(screen(summary, '', `  ${DIM}No waves yet.${RESET}`, '', `  ${DIM}[any key] back${RESET}`));
     await readKey();
     return;
   }
@@ -448,12 +448,12 @@ async function showLog(config: Config, initialDate?: string, withSummary = true)
     const records = allRecords.filter(r => r.date === currentISO);
 
     const lines: string[] = records.length === 0
-      ? [`  ${DIM}No pomos.${RESET}`]
+      ? [`  ${DIM}No waves.${RESET}`]
       : (() => {
           const pad    = String(records.length).length;
           const durPad = Math.max(...records.map(r => String(r.duration_min).length));
           return records.map((r, i) =>
-            `  ${DIM}${String(i + 1).padStart(pad)} –${RESET}  ${TOMATO}${r.time}${RESET}  ${DIM}${String(r.duration_min).padStart(durPad)} min${RESET}  ${BOLD}${r.task}${RESET}`
+            `  ${DIM}${String(i + 1).padStart(pad)} –${RESET}  ${WAVE_COLOR}${r.time}${RESET}  ${DIM}${String(r.duration_min).padStart(durPad)} min${RESET}  ${BOLD}${r.task}${RESET}`
           );
         })();
 
@@ -494,7 +494,7 @@ async function showDayPicker(config: Config): Promise<void> {
   const datesWithRecords = [...new Set(allRecords.map(r => r.date))].sort().reverse();
 
   if (datesWithRecords.length === 0) {
-    process.stdout.write(screen(null, '', `  ${DIM}No pomos yet.${RESET}`, '', `  ${DIM}[any key] back${RESET}`));
+    process.stdout.write(screen(null, '', `  ${DIM}No waves yet.${RESET}`, '', `  ${DIM}[any key] back${RESET}`));
     await readKey();
     return;
   }
@@ -527,7 +527,7 @@ async function showDayPicker(config: Config): Promise<void> {
       const count = recs.length;
       const totalMin = recs.reduce((s, r) => s + r.duration_min, 0);
       const label = formatDateLabel(iso);
-      const info = `${String(count).padStart(countPad)} 🍅  ${String(totalMin).padStart(minPad)} min`;
+      const info = `${String(count).padStart(countPad)} 🌊  ${String(totalMin).padStart(minPad)} min`;
       if (dateIdx === idx) return `  ${BOLD}❯ ${label.padEnd(20)} ${info}${RESET}`;
       return `    ${DIM}${label.padEnd(20)}${RESET} ${info}`;
     });
@@ -571,28 +571,28 @@ async function todayMinutes(logDir: string): Promise<number> {
 
 async function runSession(taskName: string, config: Config): Promise<'quit' | 'menu'> {
   while (true) {
-    const sessionNumber = (await countTodayPomos(config.logDir)) + 1;
+    const sessionNumber = (await countTodayWaves(config.logDir)) + 1;
     const breakMin = sessionNumber % 4 === 0 ? config.longBreakMin : config.shortBreakMin;
 
     const totalMinBefore = await todayMinutes(config.logDir);
 
-    const result = await runTimer(config.pomodoroMin, sessionNumber, taskName, false, totalMinBefore);
+    const result = await runTimer(config.waveMin, sessionNumber, taskName, false, totalMinBefore);
 
     if (result === 'cancelled') return 'menu';
 
-    await appendPomodoro(config.logDir, taskName, currentTime(), config.pomodoroMin);
-    sendNotification(config.notificationsEnabled, 'pomosh 🍅', `Pomodoro #${sessionNumber} completato!`, config.notificationSound);
+    await appendWave(config.logDir, taskName, currentTime(), config.waveMin);
+    sendNotification(config.notificationsEnabled, 'onda 🌊', `Wave #${sessionNumber} complete!`, config.notificationSound);
 
     const postSummary = await buildSummary(config.logDir);
     const postTotalMin = await todayMinutes(config.logDir);
 
-    const afterPomo = await askAfterPomodoro(sessionNumber, taskName, breakMin, postSummary);
+    const afterPomo = await askAfterWave(sessionNumber, taskName, breakMin, postSummary);
     if (afterPomo === 'quit') return 'quit';
     if (afterPomo === 'menu') return 'menu';
 
     if (afterPomo === 'break') {
       await runTimer(breakMin, sessionNumber, taskName, true, postTotalMin);
-      sendNotification(config.notificationsEnabled, 'pomosh', 'Pausa terminata, torna al lavoro!', config.notificationSound);
+      sendNotification(config.notificationsEnabled, 'onda', 'Pausa terminata, torna al lavoro!', config.notificationSound);
       const afterBreak = await askAfterBreak(postSummary);
       if (afterBreak === 'quit') return 'quit';
       if (afterBreak === 'menu') return 'menu';
@@ -609,8 +609,8 @@ async function main() {
   await ensureDirectories(config.logDir);
 
   // List commands: no fullscreen needed
-  if (options.list)     { await listPomodoros(config.logDir);                    process.exit(0); }
-  if (options.listDate) { await listPomodoros(config.logDir, options.listDate);  process.exit(0); }
+  if (options.list)     { await listWaves(config.logDir);                    process.exit(0); }
+  if (options.listDate) { await listWaves(config.logDir, options.listDate);  process.exit(0); }
 
   // Fullscreen from the very start
   setupScreen();
@@ -620,7 +620,7 @@ async function main() {
     const outcome = await runSession(cliTaskName[0].toUpperCase() + cliTaskName.slice(1), config);
     if (outcome === 'quit') {
       teardownScreen();
-      process.stdout.write('\n  Great work! 🍅\n\n');
+      process.stdout.write('\n  Great work! 🌊\n\n');
       return;
     }
     // 'menu' → fall through to the interactive menu loop below
@@ -655,7 +655,7 @@ async function main() {
     const outcome = await runSession(name[0].toUpperCase() + name.slice(1), config);
     if (outcome === 'quit') {
       teardownScreen();
-      process.stdout.write('\n  Great work! 🍅\n\n');
+      process.stdout.write('\n  Great work! 🌊\n\n');
       return;
     }
     // 'menu' → loop back to showMenu

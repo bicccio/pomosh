@@ -51,7 +51,7 @@ export function summaryBox(lines: string | string[], title?: string, footer?: st
   return `  ${top}\n${empty}\n${rows}\n${empty}\n  ${bottom}`;
 }
 
-// Block font for "pomosh" — one string per row
+// Block font for "onda" — one string per row (replace with your custom ASCII art)
 const BLOCK_TITLE = [
   '  ██████   ██████  █████████████    ██████   █████  ███',
   ' ███░░███ ███░░███░░███░░███░░███  ███░░███ ███░░  ░███',
@@ -61,14 +61,14 @@ const BLOCK_TITLE = [
   '░░░       ░░░░░░  ░░░░░ ░░░ ░░░░░  ░░░░░░  ░░░░░░  ░░░  ░░░',
 ];
 
-// Tomato gradient: orange-red at top → deep red at bottom
+// Ocean gradient: light turquoise at top → deep blue at bottom
 const TITLE_COLORS = [
-  '\x1b[38;2;255;120;60m',
-  '\x1b[38;2;240;90;40m',
-  '\x1b[38;2;220;65;25m',
-  '\x1b[38;2;200;42;15m',
-  '\x1b[38;2;178;22;8m',
-  '\x1b[38;2;155;10;4m',
+  '\x1b[38;2;80;220;240m',
+  '\x1b[38;2;40;190;220m',
+  '\x1b[38;2;20;160;200m',
+  '\x1b[38;2;10;130;180m',
+  '\x1b[38;2;5;100;160m',
+  '\x1b[38;2;0;70;140m',
 ];
 
 function titleBar(): string {
@@ -77,7 +77,7 @@ function titleBar(): string {
     const lines = BLOCK_TITLE.map((row, i) => `  ${BOLD}${TITLE_COLORS[i]}${row}${RESET}`);
     return lines.join('\n') + `\n  ${TITLE_COLORS[5]}${sep}${RESET}`;
   }
-  return `${BOLD}  pomosh 🍅${RESET}\n  ${'─'.repeat(Math.max(0, cols() - 4))}`;
+  return `${BOLD}  onda 🌊${RESET}\n  ${'─'.repeat(Math.max(0, cols() - 4))}`;
 }
 
 function drawBar(remaining: number, total: number): string {
@@ -96,7 +96,7 @@ function sessionSummaryBox(sessionNumber: number, isBreak: boolean, totalMinToda
 
   let icons = '';
   if (overflow > 0) icons += `${DIM}+${overflow} ${RESET}`;
-  icons += `${tomato}🍅${RESET} `.repeat(visible);
+  icons += `${tomato}🌊${RESET} `.repeat(visible);
 
   const current = isBreak ? '' : (blinkOn ? `${tomato}◉${RESET} ` : '  ');
   const label = `${completedToday} done · ${totalMinToday} min`;
@@ -106,8 +106,7 @@ function sessionSummaryBox(sessionNumber: number, isBreak: boolean, totalMinToda
 
 export function sectionHeader(name: string): string {
   const tomato = TITLE_COLORS[0];
-  const w = Math.max(0, cols() - 4 - name.length - 4);
-  return `  ${BOLD}${tomato}▌ ${name}${RESET}${DIM} ${'─'.repeat(w)}${RESET}`;
+  return `  ${BOLD}${tomato}▌ ${name}${RESET}`;
 }
 
 export function screen(summary: string | null, ...lines: string[]): string {
@@ -202,7 +201,7 @@ export async function runTimer(
       cleanupStdin();
       process.stdout.write(
         buildTimerScreen(sessionNumber, taskName, remaining, minutes, isBreak, totalMinToday) +
-        `\n\n  ${isBreak ? 'Break' : 'Pomodoro'} interrupted — cancel it? ${DIM}[y] yes   [n] no${RESET}`,
+        `\n\n  ${isBreak ? 'Break' : 'Wave'} interrupted — cancel it? ${DIM}[y] yes   [n] no${RESET}`,
       );
 
       while (true) {
@@ -252,7 +251,7 @@ export function previewSound(sound: string): void {
 
 // ─── post-timer prompts ───────────────────────────────────────────────────────
 
-export async function askAfterPomodoro(
+export async function askAfterWave(
   sessionNumber: number,
   taskName: string,
   breakMin: number,
@@ -261,7 +260,7 @@ export async function askAfterPomodoro(
   process.stdout.write(screen(
     summary,
     '',
-    `  ✓  Pomodoro #${sessionNumber} complete! — ${taskName}`,
+    `  ✓  Wave #${sessionNumber} complete! — ${taskName}`,
     '',
     `  [b] break   [enter] next   [m] menu   [q] quit`,
   ));
@@ -281,7 +280,7 @@ export async function askAfterBreak(summary: string | null): Promise<'next' | 'q
     '',
     '  ✓  Break complete!',
     '',
-    '  [enter] next pomodoro   [m] menu   [q] quit',
+    '  [enter] next wave   [m] menu   [q] quit',
   ));
   process.stdout.write(SHOW_CURSOR);
   while (true) {
