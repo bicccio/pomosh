@@ -104,6 +104,12 @@ function sessionSummaryBox(sessionNumber: number, isBreak: boolean, totalMinToda
   return summaryBox([`${icons}${current}`, '', label], 'today');
 }
 
+export function sectionHeader(name: string): string {
+  const tomato = TITLE_COLORS[0];
+  const w = Math.max(0, cols() - 4 - name.length - 4);
+  return `  ${BOLD}${tomato}▌ ${name}${RESET}${DIM} ${'─'.repeat(w)}${RESET}`;
+}
+
 export function screen(summary: string | null, ...lines: string[]): string {
   const mid = summary != null ? ['', summary] : [''];
   return [CLEAR, titleBar(), ...mid, ...lines].join('\n');

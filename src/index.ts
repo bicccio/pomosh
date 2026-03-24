@@ -12,6 +12,7 @@ import {
   sendNotification,
   previewSound,
   summaryBox,
+  sectionHeader,
 } from './timer.js';
 
 const SHOW_CURSOR = '\x1b[?25h';
@@ -64,8 +65,8 @@ async function buildSummary(logDir: string): Promise<string | null> {
 
 const MENU_OPTIONS = [
   'Start a new pomodoro',
-  'View stats',
-  'View details',
+  'Stats',
+  'Details',
   'Settings',
   'Exit',
 ] as const;
@@ -170,7 +171,7 @@ async function showSettings(config: Config): Promise<void> {
     process.stdout.write(screen(
       null,
       '',
-      '  Settings',
+      sectionHeader('Settings'),
       '',
       ...rows,
       '',
@@ -271,7 +272,7 @@ async function showStats(config: Config): Promise<void> {
   function render() {
     const now = new Date();
     const todayISO = toISO(now);
-    let title: string;
+    let subtitle: string;
     let barLines: string[];
     let totalPomos: number;
     let totalMin: number;
@@ -288,7 +289,7 @@ async function showStats(config: Config): Promise<void> {
         days.push(d);
       }
       const fmt = (d: Date) => `${DAY_LABELS[d.getDay()]} ${d.toLocaleString('en', { month: 'short' })} ${d.getDate()}`;
-      title = `  Weekly Stats — ${fmt(days[0])} – ${fmt(days[6])}`;
+      subtitle = `  ${DIM}Weekly — ${fmt(days[0])} – ${fmt(days[6])}${RESET}`;
 
       const counts = days.map(d => countByDate.get(toISO(d)) ?? 0);
       const maxCount = Math.max(...counts, 1);
@@ -312,7 +313,7 @@ async function showStats(config: Config): Promise<void> {
       const base = new Date(now.getFullYear(), now.getMonth() + offset, 1);
       const year = base.getFullYear();
       const month = base.getMonth();
-      title = `  Monthly Stats — ${MONTH_NAMES[month]} ${year}`;
+      subtitle = `  ${DIM}Monthly — ${MONTH_NAMES[month]} ${year}${RESET}`;
 
       const daysInMonth = new Date(year, month + 1, 0).getDate();
       const days: Date[] = [];
@@ -357,7 +358,7 @@ async function showStats(config: Config): Promise<void> {
     const footer = `  ${DIM}[w] weekly  [m] monthly  [←] prev  ${nextDim}[→] next${DIM}  [b] back${RESET}`;
     const total = `  Total: ${totalPomos} 🍅  ${totalMin} min`;
 
-    process.stdout.write(screen(null, '', title, '', ...barLines, '', total, '', footer));
+    process.stdout.write(screen(null, '', sectionHeader('Stats'), '', subtitle, '', ...barLines, '', total, '', footer));
   }
 
   while (true) {
@@ -463,7 +464,9 @@ async function showLog(config: Config, initialDate?: string, withSummary = true)
     process.stdout.write(screen(
       summary,
       '',
-      `  Details — ${formatDateLabel(currentISO)}`,
+      sectionHeader('Details'),
+      '',
+      `  ${DIM}${formatDateLabel(currentISO)}${RESET}`,
       '',
       ...lines,
       '',
@@ -503,55 +506,34 @@ async function showDayPicker(config: Config): Promise<void> {
   const MAX_VISIBLE = 10;
 
   while (true) {
-    // Build display items: date rows interspersed with month separators.
-    // We work on the full list to build a "virtual" display list, then window it.
-    type DisplayItem =
-      | { kind: 'date'; dateIdx: number; iso: string }
-      | { kind: 'month'; label: string };
-
-    const allItems: DisplayItem[] = [];
-    let lastMonth = '';
-    for (let i = 0; i < datesWithRecords.length; i++) {
-      const iso = datesWithRecords[i];
-      const month = iso.slice(0, 7);
-      if (month !== lastMonth) {
-        const d = new Date(iso + 'T00:00:00');
-        allItems.push({ kind: 'month', label: `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}` });
-        lastMonth = month;
-      }
-      allItems.push({ kind: 'date', dateIdx: i, iso });
-    }
-
-    // Find the virtual index of the selected date
-    const selectedVirtual = allItems.findIndex(it => it.kind === 'date' && it.dateIdx === idx);
-
     // Scroll so the selected item is centered in the window
     const scrollOffset = Math.max(0, Math.min(
-      selectedVirtual - Math.floor(MAX_VISIBLE / 2),
-      allItems.length - MAX_VISIBLE,
+      idx - Math.floor(MAX_VISIBLE / 2),
+      datesWithRecords.length - MAX_VISIBLE,
     ));
-    const visibleItems = allItems.slice(scrollOffset, scrollOffset + MAX_VISIBLE);
+    const visibleDates = datesWithRecords.slice(scrollOffset, scrollOffset + MAX_VISIBLE);
 
     const maxCount  = Math.max(...datesWithRecords.map(iso => allRecords.filter(r => r.date === iso).length));
     const maxMin    = Math.max(...datesWithRecords.map(iso => allRecords.filter(r => r.date === iso).reduce((s, r) => s + r.duration_min, 0)));
     const countPad  = String(maxCount).length;
     const minPad    = String(maxMin).length;
 
-    const rows = visibleItems.map(item => {
-      if (item.kind === 'month') {
-        return `  ${DIM}── ${item.label} ──${RESET}`;
-      }
-      const recs = allRecords.filter(r => r.date === item.iso);
+    const selDate = new Date(datesWithRecords[idx] + 'T00:00:00');
+    const subtitle = `  ${DIM}${MONTH_NAMES[selDate.getMonth()]} ${selDate.getFullYear()}${RESET}`;
+
+    const rows = visibleDates.map((iso, vi) => {
+      const dateIdx = scrollOffset + vi;
+      const recs = allRecords.filter(r => r.date === iso);
       const count = recs.length;
       const totalMin = recs.reduce((s, r) => s + r.duration_min, 0);
-      const label = formatDateLabel(item.iso);
+      const label = formatDateLabel(iso);
       const info = `${String(count).padStart(countPad)} 🍅  ${String(totalMin).padStart(minPad)} min`;
-      if (item.dateIdx === idx) return `  ${BOLD}❯ ${label.padEnd(20)} ${info}${RESET}`;
+      if (dateIdx === idx) return `  ${BOLD}❯ ${label.padEnd(20)} ${info}${RESET}`;
       return `    ${DIM}${label.padEnd(20)}${RESET} ${info}`;
     });
 
     const hasScrollUp   = scrollOffset > 0;
-    const hasScrollDown = scrollOffset + MAX_VISIBLE < allItems.length;
+    const hasScrollDown = scrollOffset + MAX_VISIBLE < datesWithRecords.length;
     const scrollHint = hasScrollUp || hasScrollDown
       ? `  ${DIM}${hasScrollUp ? '↑ ' : '  '}${datesWithRecords.length} days${hasScrollDown ? ' ↓' : '  '}${RESET}`
       : '';
@@ -559,7 +541,9 @@ async function showDayPicker(config: Config): Promise<void> {
     process.stdout.write(screen(
       null,
       '',
-      '  Select a day',
+      sectionHeader('Details'),
+      '',
+      subtitle,
       '',
       ...rows,
       ...(scrollHint ? [scrollHint] : []),
