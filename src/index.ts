@@ -1,6 +1,7 @@
 import { parseCli } from './cli.js';
 import { loadConfig, saveConfig, ensureDirectories, Config } from './config.js';
 import { countTodayWaves, appendWave, readRecords, listWaves } from './logger.js';
+import { getWavesPerWeekday, getWavesPerTimeSlot, getStreaks } from './analytics.js';
 import {
   setupScreen,
   teardownScreen,
@@ -67,11 +68,12 @@ const MENU_OPTIONS = [
   'Start a new wave',
   'Stats',
   'Details',
+  'Insights',
   'Settings',
   'Exit',
 ] as const;
 
-async function showMenu(logDir: string): Promise<0 | 1 | 2 | 3 | 4 | 'log'> {
+async function showMenu(logDir: string): Promise<0 | 1 | 2 | 3 | 4 | 5 | 'log'> {
   const summary = await buildSummary(logDir);
   let idx = 0;
 
@@ -93,8 +95,8 @@ async function showMenu(logDir: string): Promise<0 | 1 | 2 | 3 | 4 | 'log'> {
     const key = await readKey();
     if (key === '\x1b[A' && idx > 0)                             idx--;
     else if (key === '\x1b[B' && idx < MENU_OPTIONS.length - 1)  idx++;
-    else if (key === '\r' || key === '\n')                        return idx as 0 | 1 | 2 | 3 | 4;
-    else if (key === 'q' || key === 'Q')                         return 4;
+    else if (key === '\r' || key === '\n')                        return idx as 0 | 1 | 2 | 3 | 4 | 5;
+    else if (key === 'q' || key === 'Q')                         return 5;
     else if (key === 'd' || key === 'D')                         return 'log';
   }
 }
@@ -449,17 +451,13 @@ async function showLog(config: Config, initialDate?: string, withSummary = true)
 
     const lines: string[] = records.length === 0
       ? [`  ${DIM}No waves.${RESET}`]
-      : (() => {
-          const pad    = String(records.length).length;
-          const durPad = Math.max(...records.map(r => String(r.duration_min).length));
-          return records.map((r, i) =>
-            `  ${DIM}${String(i + 1).padStart(pad)} –${RESET}  ${WAVE_COLOR}${r.time}${RESET}  ${DIM}${String(r.duration_min).padStart(durPad)} min${RESET}  ${BOLD}${r.task}${RESET}`
-          );
-        })();
+      : records.map(r =>
+          `  ${WAVE_COLOR}${r.time}${RESET}  ${BOLD}${r.task}${RESET}`
+        );
 
     const prevDim = hasPrev ? '' : DIM;
     const nextDim = hasNext ? '' : DIM;
-    const footer = `  ${prevDim}[←] prev${RESET}  ${nextDim}[→] next${RESET}  ${DIM}[b] back${RESET}`;
+    const footer = `  ${DIM}[↑↓] day   [←→] month   [b] back${RESET}`;
 
     process.stdout.write(screen(
       summary,
@@ -474,8 +472,10 @@ async function showLog(config: Config, initialDate?: string, withSummary = true)
     ));
 
     const key = await readKey();
-    if      (key === '\x1b[D' && hasPrev) currentISO = datesWithRecords[idxInDates - 1];
-    else if (key === '\x1b[C' && hasNext) currentISO = datesWithRecords[idxInDates + 1];
+    if      (key === '\x1b[A' && hasNext) currentISO = datesWithRecords[idxInDates + 1];
+    else if (key === '\x1b[B' && hasPrev) currentISO = datesWithRecords[idxInDates - 1];
+    else if (key === '\x1b[C') currentISO = datesWithRecords[jumpToMonth(datesWithRecords, idxInDates, +1)];
+    else if (key === '\x1b[D') currentISO = datesWithRecords[jumpToMonth(datesWithRecords, idxInDates, -1)];
     else if (key === 'b' || key === 'B' || key === '\x1b') return;
   }
 }
@@ -563,6 +563,68 @@ async function showDayPicker(config: Config): Promise<void> {
   }
 }
 
+const MON_SUN = [1, 2, 3, 4, 5, 6, 0] as const; // Mon..Sat, Sun
+
+async function showInsights(config: Config): Promise<void> {
+  const records = await readRecords(config.logDir);
+
+  if (records.length === 0) {
+    process.stdout.write(screen(null, '', sectionHeader('Insights'), '', `  ${DIM}No waves yet.${RESET}`, '', `  ${DIM}[any key] back${RESET}`));
+    await readKey();
+    return;
+  }
+
+  const weekdayStats = getWavesPerWeekday(records);
+  const timeSlots    = getWavesPerTimeSlot(records);
+  const streaks      = getStreaks(records);
+
+  const maxAvg  = Math.max(...weekdayStats.map(s => s.avg), 1);
+  const WDAY_BAR = 20;
+
+  const weekdayLines = MON_SUN.map((wd, i) => {
+    const stat   = weekdayStats[wd];
+    const filled = Math.round((stat.avg / maxAvg) * WDAY_BAR);
+    const bar    = '█'.repeat(filled) + '░'.repeat(WDAY_BAR - filled);
+    const avg    = stat.distinctDays > 0 ? stat.avg.toFixed(1) : '—  ';
+    const label  = DAY_LABELS[wd];
+    const prefix = i === 0 ? '  Per weekday   ' : '                ';
+    return `${prefix}${label}  ${bar}  ${avg}`;
+  });
+
+  const maxSlot  = Math.max(...timeSlots.map(s => s.count), 1);
+  const SLOT_BAR = 16;
+  const timeLines = timeSlots.map((s, i) => {
+    const filled = Math.round((s.count / maxSlot) * SLOT_BAR);
+    const bar    = '█'.repeat(filled) + '░'.repeat(SLOT_BAR - filled);
+    const pct    = `${String(s.pct).padStart(3)}%`;
+    const prefix = i === 0 ? '  Peak time     ' : '                ';
+    return `${prefix}${s.slot.padEnd(10)}  ${bar}  ${pct}`;
+  });
+
+  const cur        = streaks.current;
+  const lon        = streaks.longest;
+  const streakLine = `  Streak         Current  ▸ ${cur} day${cur !== 1 ? 's' : ''}    Longest  ▸ ${lon} day${lon !== 1 ? 's' : ''}`;
+
+  process.stdout.write(screen(
+    null,
+    '',
+    sectionHeader('Insights'),
+    '',
+    ...weekdayLines,
+    '',
+    ...timeLines,
+    '',
+    streakLine,
+    '',
+    `  ${DIM}[b] back${RESET}`,
+  ));
+
+  while (true) {
+    const key = await readKey();
+    if (key === 'b' || key === 'B' || key === '\x1b') return;
+  }
+}
+
 async function todayMinutes(logDir: string): Promise<number> {
   const todayISO = new Date().toISOString().slice(0, 10);
   const recs = await readRecords(logDir);
@@ -628,16 +690,17 @@ async function main() {
 
   // Main loop: menu → action → back to menu
   while (true) {
-    let choice: 0 | 1 | 2 | 3 | 4 | 'log';
+    let choice: 0 | 1 | 2 | 3 | 4 | 5 | 'log';
 
     do {
       choice = await showMenu(config.logDir);
 
-      if (choice === 4)     { teardownScreen(); process.exit(0); }
+      if (choice === 5)     { teardownScreen(); process.exit(0); }
       if (choice === 'log') { await showLog(config); }
       if (choice === 1)     { await showStats(config); }
-      if (choice === 2)     { await showDayPicker(config); }
-      if (choice === 3)     { await showSettings(config); }
+      if (choice === 2)     { await showLog(config); }
+      if (choice === 3)     { await showInsights(config); }
+      if (choice === 4)     { await showSettings(config); }
     } while (choice !== 0);
 
     const allRecords = await readRecords(config.logDir);
