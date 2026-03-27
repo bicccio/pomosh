@@ -36,10 +36,11 @@ export function visibleWidth(s: string): number {
 export function summaryBox(lines: string | string[], title?: string, footer?: string): string {
   const all = Array.isArray(lines) ? lines : [lines];
   const inners = all.map(l => `  ${l}  `);
-  const minW = footer ? footer.length + 4 : 0;
+  const titleW = title ? visibleWidth(title) : 0;
+  const minW = Math.max(footer ? footer.length + 4 : 0, title ? titleW + 3 : 0);
   const w = Math.max(...inners.map(visibleWidth), minW);
   const top = title
-    ? `╭─ ${title} ${'─'.repeat(Math.max(0, w - title.length - 3))}╮`
+    ? `╭─ ${title} ${'─'.repeat(Math.max(0, w - titleW - 3))}╮`
     : `╭${'─'.repeat(w)}╮`;
   const bottom = footer
     ? `╰${'─'.repeat(Math.max(0, w - footer.length - 3))} ${footer} ─╯`
@@ -256,21 +257,21 @@ export async function askAfterWave(
   taskName: string,
   breakMin: number,
   summary: string | null,
-): Promise<'break' | 'next' | 'quit' | 'menu'> {
+): Promise<'break' | 'next' | 'menu' | 'details'> {
   process.stdout.write(screen(
     summary,
     '',
-    `  ✓  Wave #${sessionNumber} complete! — ${taskName}`,
+    `  ${BOLD}\x1b[38;2;40;190;220m✓  Wave #${sessionNumber} complete!${RESET}  ${DIM}— ${taskName}${RESET}`,
     '',
-    `  [b] break   [enter] next   [m] menu   [q] quit`,
+    `  [b] break   [enter] next   [l] log   [m] menu`,
   ));
   process.stdout.write(SHOW_CURSOR);
   while (true) {
     const key = await readKey();
     if (key === 'b' || key === 'B')                  { process.stdout.write(HIDE_CURSOR); return 'break'; }
     if (key === '\r' || key === '\n' || key === ' ') { process.stdout.write(HIDE_CURSOR); return 'next'; }
+    if (key === 'l' || key === 'L')                  { process.stdout.write(HIDE_CURSOR); return 'details'; }
     if (key === 'm' || key === 'M')                  { process.stdout.write(HIDE_CURSOR); return 'menu'; }
-    if (key === 'q' || key === 'Q')                  return 'quit';
   }
 }
 

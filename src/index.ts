@@ -59,7 +59,7 @@ async function buildSummary(logDir: string): Promise<string | null> {
   let icons = overflow > 0 ? `${DIM}+${overflow} ${RESET}` : '';
   icons += `${tomato}🌊${RESET} `.repeat(visible);
 
-  return summaryBox([icons, '', countLabel], title, '[d] details');
+  return summaryBox([icons, '', countLabel], title);
 }
 
 // ─── custom fullscreen prompts ────────────────────────────────────────────────
@@ -67,7 +67,7 @@ async function buildSummary(logDir: string): Promise<string | null> {
 const MENU_OPTIONS = [
   'Start a new wave',
   'Stats',
-  'Details',
+  'Log',
   'Insights',
   'Settings',
   'Exit',
@@ -89,7 +89,7 @@ async function showMenu(logDir: string): Promise<0 | 1 | 2 | 3 | 4 | 5 | 'log'> 
       '',
       ...opts,
       '',
-      `  ${MUTED}[↑↓] navigate   [enter] select   [d] details   [q] quit${RESET}`,
+      `  ${MUTED}[↑↓] navigate   [enter] select   [l] log   [q] quit${RESET}`,
     ));
 
     const key = await readKey();
@@ -97,7 +97,7 @@ async function showMenu(logDir: string): Promise<0 | 1 | 2 | 3 | 4 | 5 | 'log'> 
     else if (key === '\x1b[B' && idx < MENU_OPTIONS.length - 1)  idx++;
     else if (key === '\r' || key === '\n')                        return idx as 0 | 1 | 2 | 3 | 4 | 5;
     else if (key === 'q' || key === 'Q')                         return 5;
-    else if (key === 'd' || key === 'D')                         return 'log';
+    else if (key === 'l' || key === 'L')                         return 'log';
   }
 }
 
@@ -280,7 +280,7 @@ async function showStats(config: Config): Promise<void> {
     let totalMin: number;
 
     if (mode === 'week') {
-      const dow = (now.getDay() + 6) % 7; // 0=Monday
+      const dow = (now.getDay() + 6) % 7;
       const monday = new Date(now);
       monday.setDate(now.getDate() - dow + offset * 7);
       monday.setHours(0, 0, 0, 0);
@@ -357,7 +357,7 @@ async function showStats(config: Config): Promise<void> {
     }
 
     const nextDim = offset === 0 ? DIM : '';
-    const footer = `  ${DIM}[w] weekly  [m] monthly  [←] prev  ${nextDim}[→] next${DIM}  [b] back${RESET}`;
+    const footer = `  ${DIM}[w] weekly  [m] monthly  [←] prev  ${nextDim}[→] next${DIM}  [esc] back${RESET}`;
     const total = `  Total: ${totalPomos} 🌊  ${totalMin} min`;
 
     process.stdout.write(screen(null, '', sectionHeader('Stats'), '', subtitle, '', ...barLines, '', total, '', footer));
@@ -366,11 +366,11 @@ async function showStats(config: Config): Promise<void> {
   while (true) {
     render();
     const key = await readKey();
-    if (key === 'w' || key === 'W')   { mode = 'week';  offset = 0; }
+    if (key === 'w' || key === 'W')      { mode = 'week';  offset = 0; }
     else if (key === 'm' || key === 'M') { mode = 'month'; offset = 0; }
-    else if (key === '\x1b[D')        offset--;
+    else if (key === '\x1b[D')           offset--;
     else if (key === '\x1b[C' && offset < 0) offset++;
-    else if (key === 'b' || key === 'B' || key === '\x1b') return;
+    else if (key === '\x1b') return;
   }
 }
 
@@ -428,13 +428,13 @@ function formatDateLabel(iso: string): string {
   return d.toLocaleString('en', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
-async function showLog(config: Config, initialDate?: string, withSummary = true): Promise<void> {
+async function showLog(config: Config, initialDate?: string, withSummary = false): Promise<void> {
   const summary = withSummary ? await buildSummary(config.logDir) : null;
   const allRecords = await readRecords(config.logDir);
   const datesWithRecords = [...new Set(allRecords.map(r => r.date))].sort();
 
   if (datesWithRecords.length === 0) {
-    process.stdout.write(screen(summary, '', sectionHeader('Details'), '', `  ${DIM}No waves yet.${RESET}`, '', `  ${DIM}[any key] back${RESET}`));
+    process.stdout.write(screen(summary, '', sectionHeader('Log'), '', `  ${DIM}No waves yet.${RESET}`, '', `  ${DIM}[any key] back${RESET}`));
     await readKey();
     return;
   }
@@ -457,12 +457,12 @@ async function showLog(config: Config, initialDate?: string, withSummary = true)
 
     const prevDim = hasPrev ? '' : DIM;
     const nextDim = hasNext ? '' : DIM;
-    const footer = `  ${DIM}[↑↓] day   [←→] month   [b] back${RESET}`;
+    const footer = `  ${DIM}[↑↓] day   [←→] month   [esc] back${RESET}`;
 
     process.stdout.write(screen(
       summary,
       '',
-      sectionHeader('Details'),
+      sectionHeader('Log'),
       '',
       `  ${DIM}${formatDateLabel(currentISO)}${RESET}`,
       '',
@@ -476,7 +476,7 @@ async function showLog(config: Config, initialDate?: string, withSummary = true)
     else if (key === '\x1b[B' && hasPrev) currentISO = datesWithRecords[idxInDates - 1];
     else if (key === '\x1b[C') currentISO = datesWithRecords[jumpToMonth(datesWithRecords, idxInDates, +1)];
     else if (key === '\x1b[D') currentISO = datesWithRecords[jumpToMonth(datesWithRecords, idxInDates, -1)];
-    else if (key === 'b' || key === 'B' || key === '\x1b') return;
+    else if (key === '\x1b') return;
   }
 }
 
@@ -494,7 +494,7 @@ async function showDayPicker(config: Config): Promise<void> {
   const datesWithRecords = [...new Set(allRecords.map(r => r.date))].sort().reverse();
 
   if (datesWithRecords.length === 0) {
-    process.stdout.write(screen(null, '', sectionHeader('Details'), '', `  ${DIM}No waves yet.${RESET}`, '', `  ${DIM}[any key] back${RESET}`));
+    process.stdout.write(screen(null, '', sectionHeader('Log'), '', `  ${DIM}No waves yet.${RESET}`, '', `  ${DIM}[any key] back${RESET}`));
     await readKey();
     return;
   }
@@ -541,14 +541,14 @@ async function showDayPicker(config: Config): Promise<void> {
     process.stdout.write(screen(
       null,
       '',
-      sectionHeader('Details'),
+      sectionHeader('Log'),
       '',
       subtitle,
       '',
       ...rows,
       ...(scrollHint ? [scrollHint] : []),
       '',
-      `  ${DIM}[↑↓] day   [←→] month   [enter] view   [b] back${RESET}`,
+      `  ${DIM}[↑↓] day   [←→] month   [enter] view   [esc] back${RESET}`,
     ));
 
     const key = await readKey();
@@ -569,7 +569,7 @@ async function showInsights(config: Config): Promise<void> {
   const records = await readRecords(config.logDir);
 
   if (records.length === 0) {
-    process.stdout.write(screen(null, '', sectionHeader('Insights'), '', `  ${DIM}No waves yet.${RESET}`, '', `  ${DIM}[any key] back${RESET}`));
+    process.stdout.write(screen(null, '', sectionHeader('Insights'), '', `  ${DIM}No waves yet.${RESET}`, '', `  ${DIM}[esc] back${RESET}`));
     await readKey();
     return;
   }
@@ -581,47 +581,49 @@ async function showInsights(config: Config): Promise<void> {
   const maxAvg  = Math.max(...weekdayStats.map(s => s.avg), 1);
   const WDAY_BAR = 20;
 
-  const weekdayLines = MON_SUN.map((wd, i) => {
+  const weekdayLines = MON_SUN.map(wd => {
     const stat   = weekdayStats[wd];
     const filled = Math.round((stat.avg / maxAvg) * WDAY_BAR);
     const bar    = '█'.repeat(filled) + '░'.repeat(WDAY_BAR - filled);
     const avg    = stat.distinctDays > 0 ? stat.avg.toFixed(1) : '—  ';
-    const label  = DAY_LABELS[wd];
-    const prefix = i === 0 ? '  Per weekday   ' : '                ';
-    return `${prefix}${label}  ${bar}  ${avg}`;
+    return `  ${DAY_LABELS[wd]}  ${bar}  ${avg}`;
   });
 
   const maxSlot  = Math.max(...timeSlots.map(s => s.count), 1);
   const SLOT_BAR = 16;
-  const timeLines = timeSlots.map((s, i) => {
+  const timeLines = timeSlots.map(s => {
     const filled = Math.round((s.count / maxSlot) * SLOT_BAR);
     const bar    = '█'.repeat(filled) + '░'.repeat(SLOT_BAR - filled);
     const pct    = `${String(s.pct).padStart(3)}%`;
-    const prefix = i === 0 ? '  Peak time     ' : '                ';
-    return `${prefix}${s.slot.padEnd(10)}  ${bar}  ${pct}`;
+    return `  ${s.slot.padEnd(10)}  ${bar}  ${pct}`;
   });
 
   const cur        = streaks.current;
   const lon        = streaks.longest;
-  const streakLine = `  Streak         Current  ▸ ${cur} day${cur !== 1 ? 's' : ''}    Longest  ▸ ${lon} day${lon !== 1 ? 's' : ''}`;
+  const streakLine = `  Current  ▸ ${cur} day${cur !== 1 ? 's' : ''}    Longest  ▸ ${lon} day${lon !== 1 ? 's' : ''}`;
 
   process.stdout.write(screen(
-    null,
-    '',
+    null, '',
     sectionHeader('Insights'),
+    '',
+    `  ${MUTED}Per weekday${RESET}`,
     '',
     ...weekdayLines,
     '',
+    `  ${MUTED}Peak time${RESET}`,
+    '',
     ...timeLines,
+    '',
+    `  ${MUTED}Streak${RESET}`,
     '',
     streakLine,
     '',
-    `  ${DIM}[b] back${RESET}`,
+    `  ${DIM}[esc] back${RESET}`,
   ));
 
   while (true) {
     const key = await readKey();
-    if (key === 'b' || key === 'B' || key === '\x1b') return;
+    if (key === '\x1b') return;
   }
 }
 
@@ -648,8 +650,11 @@ async function runSession(taskName: string, config: Config): Promise<'quit' | 'm
     const postSummary = await buildSummary(config.logDir);
     const postTotalMin = await todayMinutes(config.logDir);
 
-    const afterPomo = await askAfterWave(sessionNumber, taskName, breakMin, postSummary);
-    if (afterPomo === 'quit') return 'quit';
+    let afterPomo: Awaited<ReturnType<typeof askAfterWave>>;
+    do {
+      afterPomo = await askAfterWave(sessionNumber, taskName, breakMin, postSummary);
+      if (afterPomo === 'details') await showLog(config);
+    } while (afterPomo === 'details');
     if (afterPomo === 'menu') return 'menu';
 
     if (afterPomo === 'break') {
