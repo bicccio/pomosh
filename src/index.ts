@@ -20,7 +20,7 @@ const SHOW_CURSOR = '\x1b[?25h';
 const HIDE_CURSOR = '\x1b[?25l';
 const DIM    = '\x1b[2m';
 const RESET  = '\x1b[0m';
-const WAVE_COLOR = '\x1b[38;2;40;190;220m';
+const WAVE_COLOR = '\x1b[38;2;255;165;0m';
 const MUTED  = '\x1b[38;2;130;130;130m';
 
 function currentTime(): string {
@@ -32,7 +32,7 @@ async function buildSummary(logDir: string): Promise<string | null> {
   const recs = await readRecords(logDir);
 
   if (recs.length === 0) {
-    return summaryBox(['No waves yet — start your first! 🌊'], 'onda');
+    return summaryBox(['No waves yet — start your first! 🏄'], 'surf');
   }
 
   const todayISO = new Date().toISOString().slice(0, 10);
@@ -51,13 +51,13 @@ async function buildSummary(logDir: string): Promise<string | null> {
     title = `last · ${d.toLocaleString('en', { month: 'short', day: 'numeric' })}`;
   }
 
-  const tomato = '\x1b[38;2;40;190;220m';
+  const tomato = '\x1b[38;2;255;165;0m';
   const maxVisible = Math.max(0, Math.floor(((process.stdout.columns || 80) - 30) / 3));
   const overflow = Math.max(0, n - maxVisible);
   const visible  = n - overflow;
   const countLabel = `${n} done · ${totalMin} min`;
   let icons = overflow > 0 ? `${DIM}+${overflow} ${RESET}` : '';
-  icons += `${tomato}🌊${RESET} `.repeat(visible);
+  icons += `${tomato}🏄${RESET} `.repeat(visible);
 
   return summaryBox([icons, '', countLabel], title);
 }
@@ -66,8 +66,8 @@ async function buildSummary(logDir: string): Promise<string | null> {
 
 const MENU_OPTIONS = [
   'Start a new wave',
-  'Stats',
   'Log',
+  'Stats',
   'Insights',
   'Settings',
   'Exit',
@@ -290,7 +290,11 @@ async function showStats(config: Config): Promise<void> {
         d.setDate(monday.getDate() + i);
         days.push(d);
       }
-      const fmt = (d: Date) => `${DAY_LABELS[d.getDay()]} ${d.toLocaleString('en', { month: 'short' })} ${d.getDate()}`;
+      const currentYear = now.getFullYear();
+      const fmt = (d: Date) => {
+        const base = `${DAY_LABELS[d.getDay()]} ${d.toLocaleString('en', { month: 'short' })} ${d.getDate()}`;
+        return d.getFullYear() !== currentYear ? `${base} ${d.getFullYear()}` : base;
+      };
       subtitle = `  ${DIM}Weekly — ${fmt(days[0])} – ${fmt(days[6])}${RESET}`;
 
       const counts = days.map(d => countByDate.get(toISO(d)) ?? 0);
@@ -306,9 +310,9 @@ async function showStats(config: Config): Promise<void> {
         const isToday = iso === todayISO;
         const label = `${DAY_LABELS[d.getDay()]} ${String(d.getDate()).padStart(2)}`;
         const countStr = String(count).padStart(2);
-        if (isToday)          return `  ${BOLD}${WAVE_COLOR}${label}  ${bar}  ${countStr} 🌊${RESET}`;
-        else if (count === 0) return `  ${DIM}${label}  ${bar}  ${countStr} 🌊${RESET}`;
-        else                  return `  ${label}  ${bar}  ${countStr} 🌊`;
+        if (isToday)          return `  ${BOLD}${WAVE_COLOR}${label}  ${bar}  ${countStr} 🏄${RESET}`;
+        else if (count === 0) return `  ${DIM}${label}  ${bar}  ${countStr} 🏄${RESET}`;
+        else                  return `  ${label}  ${bar}  ${countStr} 🏄`;
       });
 
     } else {
@@ -358,7 +362,7 @@ async function showStats(config: Config): Promise<void> {
 
     const nextDim = offset === 0 ? DIM : '';
     const footer = `  ${DIM}[w] weekly  [m] monthly  [←] prev  ${nextDim}[→] next${DIM}  [esc] back${RESET}`;
-    const total = `  Total: ${totalPomos} 🌊  ${totalMin} min`;
+    const total = `  Total: ${totalPomos} 🏄  ${totalMin} min`;
 
     process.stdout.write(screen(null, '', sectionHeader('Stats'), '', subtitle, '', ...barLines, '', total, '', footer));
   }
@@ -425,6 +429,10 @@ function formatDateLabel(iso: string): string {
   if (iso === todayISO) return 'today';
   if (iso === yesterISO) return 'yesterday';
   const d = new Date(iso + 'T00:00:00');
+  const currentYear = new Date().getFullYear();
+  if (d.getFullYear() !== currentYear) {
+    return d.toLocaleString('en', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+  }
   return d.toLocaleString('en', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
@@ -527,7 +535,7 @@ async function showDayPicker(config: Config): Promise<void> {
       const count = recs.length;
       const totalMin = recs.reduce((s, r) => s + r.duration_min, 0);
       const label = formatDateLabel(iso);
-      const info = `${String(count).padStart(countPad)} 🌊  ${String(totalMin).padStart(minPad)} min`;
+      const info = `${String(count).padStart(countPad)} 🏄  ${String(totalMin).padStart(minPad)} min`;
       if (dateIdx === idx) return `  ${BOLD}❯ ${label.padEnd(20)} ${info}${RESET}`;
       return `    ${DIM}${label.padEnd(20)}${RESET} ${info}`;
     });
@@ -645,7 +653,7 @@ async function runSession(taskName: string, config: Config): Promise<'quit' | 'm
     if (result === 'cancelled') return 'menu';
 
     await appendWave(config.logDir, taskName, currentTime(), config.waveMin);
-    sendNotification(config.notificationsEnabled, 'onda 🌊', `Wave #${sessionNumber} complete!`, config.notificationSound);
+    sendNotification(config.notificationsEnabled, 'surf 🏄', `Wave #${sessionNumber} complete!`, config.notificationSound);
 
     const postSummary = await buildSummary(config.logDir);
     const postTotalMin = await todayMinutes(config.logDir);
@@ -659,7 +667,7 @@ async function runSession(taskName: string, config: Config): Promise<'quit' | 'm
 
     if (afterPomo === 'break') {
       await runTimer(breakMin, sessionNumber, taskName, true, postTotalMin);
-      sendNotification(config.notificationsEnabled, 'onda', 'Pausa terminata, torna al lavoro!', config.notificationSound);
+      sendNotification(config.notificationsEnabled, 'surf', 'Pausa terminata, torna al lavoro!', config.notificationSound);
       const afterBreak = await askAfterBreak(postSummary);
       if (afterBreak === 'quit') return 'quit';
       if (afterBreak === 'menu') return 'menu';
@@ -687,7 +695,7 @@ async function main() {
     const outcome = await runSession(cliTaskName[0].toUpperCase() + cliTaskName.slice(1), config);
     if (outcome === 'quit') {
       teardownScreen();
-      process.stdout.write('\n  Great work! 🌊\n\n');
+      process.stdout.write('\n  Great work! 🏄\n\n');
       return;
     }
     // 'menu' → fall through to the interactive menu loop below
@@ -702,8 +710,8 @@ async function main() {
 
       if (choice === 5)     { teardownScreen(); process.exit(0); }
       if (choice === 'log') { await showLog(config); }
-      if (choice === 1)     { await showStats(config); }
-      if (choice === 2)     { await showLog(config); }
+      if (choice === 1)     { await showLog(config); }
+      if (choice === 2)     { await showStats(config); }
       if (choice === 3)     { await showInsights(config); }
       if (choice === 4)     { await showSettings(config); }
     } while (choice !== 0);
@@ -723,7 +731,7 @@ async function main() {
     const outcome = await runSession(name[0].toUpperCase() + name.slice(1), config);
     if (outcome === 'quit') {
       teardownScreen();
-      process.stdout.write('\n  Great work! 🌊\n\n');
+      process.stdout.write('\n  Great work! 🏄\n\n');
       return;
     }
     // 'menu' → loop back to showMenu

@@ -17,21 +17,21 @@ export function parseCli(argv: string[]): ParsedCli {
   const program = new Command();
 
   program
-    .name('onda')
+    .name('surf')
     .usage('[-lh] [-L DATE] [-d CONFIG_FILE] [-g LOG_DIRECTORY] [wave_name]')
     .description('A minimal focus timer')
     .argument('[wave_name]', 'name of the wave task')
     .option('-l', 'list today waves')
     .option('-L <date>', 'list DATE waves. DATE must be in YYYYMMDD format')
-    .option('-d <config_file>', 'use CONFIG_FILE other than default ~/.onda/onda.cfg')
-    .option('-g <log_directory>', 'use LOG_DIRECTORY other than default ~/.onda/waves/')
+    .option('-d <config_file>', 'use CONFIG_FILE other than default ~/.surftime/surftime.cfg')
+    .option('-g <log_directory>', 'use LOG_DIRECTORY other than default ~/.surftime/waves/')
     .option('-c <calendar>', 'if enabled specify the calendar name')
     .helpOption('-h, --help', 'print this help')
     .addHelpText('after', `
 Configuration:
-    ONDA_HOME               the Onda home directory.
-    ONDA_LOG                the logs directory.
-    ONDA_CONFIG=CONFIG_FILE same as option -d CONFIG_FILE.
+    SURFTIME_HOME               the Surftime home directory.
+    SURFTIME_LOG                the logs directory.
+    SURFTIME_CONFIG=CONFIG_FILE same as option -d CONFIG_FILE.
 
     wave_min                wave duration in minutes (default 25).
     short_break_min         short break duration in minutes (default 5).

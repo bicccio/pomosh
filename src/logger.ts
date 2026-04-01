@@ -11,7 +11,7 @@ function todayISO(): string {
 }
 
 function logFile(logDir: string): string {
-  return join(logDir, 'onda.jsonl');
+  return join(logDir, 'surftime.jsonl');
 }
 
 interface WaveRecord {
