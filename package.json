@@ -1,9 +1,9 @@
 {
-  "name": "onda",
+  "name": "surftime",
   "version": "2.0.0",
   "type": "module",
   "bin": {
-    "onda": "./dist/index.js"
+    "surf": "./dist/index.js"
   },
   "scripts": {
     "dev": "tsx src/index.ts",

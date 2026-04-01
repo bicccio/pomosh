@@ -19,12 +19,12 @@ const DEFAULT_CONFIG: Config = {
   longBreakMin: 15,
   notificationsEnabled: true,
   notificationSound: 'default',
-  logDir: join(homedir(), '.onda', 'waves'),
-  configPath: join(homedir(), '.onda', 'onda.cfg'),
+  logDir: join(homedir(), '.surftime', 'waves'),
+  configPath: join(homedir(), '.surftime', 'surftime.cfg'),
 };
 
 export async function ensureDirectories(logDir: string): Promise<void> {
-  await mkdir(join(homedir(), '.onda'), { recursive: true });
+  await mkdir(join(homedir(), '.surftime'), { recursive: true });
   await mkdir(logDir, { recursive: true });
 }
 
