@@ -24,11 +24,25 @@ interface WaveRecord {
 async function readRecords(logDir: string): Promise<WaveRecord[]> {
   const filePath = logFile(logDir);
   if (!existsSync(filePath)) return [];
-  const content = await readFile(filePath, 'utf-8');
+  let content: string;
+  try {
+    content = await readFile(filePath, 'utf-8');
+  } catch {
+    process.stderr.write(`Warning: could not read log file\n`);
+    return [];
+  }
   return content
     .split('\n')
     .filter(l => l.trim() !== '')
-    .map(l => JSON.parse(l) as WaveRecord);
+    .map(l => {
+      try {
+        return JSON.parse(l) as WaveRecord;
+      } catch {
+        process.stderr.write(`Warning: skipping corrupted line in log file\n`);
+        return null;
+      }
+    })
+    .filter((r): r is WaveRecord => r !== null);
 }
 
 export async function countTodayWaves(logDir: string): Promise<number> {
