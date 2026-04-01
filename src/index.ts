@@ -167,8 +167,8 @@ async function showSettings(config: Config): Promise<void> {
     });
 
     const hint = editing
-      ? `  ${DIM}[enter] confirm   [esc] cancel${RESET}`
-      : `  ${DIM}[↑↓] navigate   [enter/←/→/space] edit   [esc] back${RESET}`;
+      ? `  ${DIM}[enter] confirm  [esc] cancel  [q] quit${RESET}`
+      : `  ${DIM}[↑↓] navigate  [enter/←→/space] edit  [esc] back  [q] quit${RESET}`;
 
     process.stdout.write(screen(
       null,
@@ -198,6 +198,10 @@ async function showSettings(config: Config): Promise<void> {
     if ((currentField.kind === 'bool' || currentField.kind === 'cycle') && !editing) {
       if (key === '\x1b[A' && idx > 0)                 { idx--; continue; }
       if (key === '\x1b[B' && idx < fields.length - 1) { idx++; continue; }
+      if (key === 'q' || key === 'Q') {
+        if (hasChanges()) await saveConfig(config);
+        return;
+      }
       if (key === '\x1b') {
         if (hasChanges()) await saveConfig(config);
         return;
@@ -227,6 +231,9 @@ async function showSettings(config: Config): Promise<void> {
         }
         editing = false;
         editBuf = '';
+      } else if (key === 'q' || key === 'Q') {
+        if (hasChanges()) await saveConfig(config);
+        return;
       } else if (key === '\x1b') {
         editing = false;
         editBuf = '';
@@ -241,6 +248,9 @@ async function showSettings(config: Config): Promise<void> {
       else if (key === '\r' || key === '\n') {
         editing = true;
         editBuf = '';
+      } else if (key === 'q' || key === 'Q') {
+        if (hasChanges()) await saveConfig(config);
+        return;
       } else if (key === '\x1b') {
         if (hasChanges()) await saveConfig(config);
         return;
@@ -360,8 +370,8 @@ async function showStats(config: Config): Promise<void> {
       barLines = [...chartRows, axis];
     }
 
-    const nextDim = offset === 0 ? DIM : '';
-    const footer = `  ${DIM}[w] weekly  [m] monthly  [←] prev  ${nextDim}[→] next${DIM}  [esc] back${RESET}`;
+    const navHints = offset < 0 ? `[←] prev  [→] next` : `[←] prev`;
+    const footer = `  ${DIM}[w] weekly  [m] monthly  ${navHints}  [esc] back  [q] quit${RESET}`;
     const total = `  Total: ${totalPomos} 🏄  ${totalMin} min`;
 
     process.stdout.write(screen(null, '', sectionHeader('Stats'), '', subtitle, '', ...barLines, '', total, '', footer));
@@ -374,6 +384,7 @@ async function showStats(config: Config): Promise<void> {
     else if (key === 'm' || key === 'M') { mode = 'month'; offset = 0; }
     else if (key === '\x1b[D')           offset--;
     else if (key === '\x1b[C' && offset < 0) offset++;
+    else if (key === 'q' || key === 'Q') return;
     else if (key === '\x1b') return;
   }
 }
@@ -384,8 +395,13 @@ async function showTextInput(summary: string | null, prompt: string, placeholder
   let savedInput = '';
 
   while (true) {
-    const display = value || `${DIM}${placeholder}${RESET}`;
-    const historyHint = history.length > 0 ? `  ${DIM}[↑↓] history   [esc] menu${RESET}` : `  ${DIM}[esc] menu${RESET}`;
+    const effectivePlaceholder = history.length > 0
+      ? `${placeholder} (↑↓ history)`
+      : placeholder;
+    const display = value || `${DIM}${effectivePlaceholder}${RESET}`;
+    const historyHint = history.length > 0
+      ? `  ${DIM}[↑↓] previous tasks   [esc] menu${RESET}`
+      : `  ${DIM}[esc] menu${RESET}`;
     process.stdout.write(screen(
       summary,
       '',
@@ -402,7 +418,7 @@ async function showTextInput(summary: string | null, prompt: string, placeholder
     const key = await readKey();
     process.stdout.write(HIDE_CURSOR);
 
-    if (key === '\r' || key === '\n')        return value.trim() || placeholder;
+    if (key === '\r' || key === '\n')        return value.trim() || effectivePlaceholder;
     if (key === '\u0003' || key === '\x1b') return null; // Ctrl+C or Esc → back to menu
     if (key === '\x7f' || key === '\b') {
       value = value.slice(0, -1);
@@ -465,7 +481,7 @@ async function showLog(config: Config, initialDate?: string, withSummary = false
 
     const prevDim = hasPrev ? '' : DIM;
     const nextDim = hasNext ? '' : DIM;
-    const footer = `  ${DIM}[↑↓] day   [←→] month   [esc] back${RESET}`;
+    const footer = `  ${DIM}[↑↓] day  [←→] month  [enter] view  [esc] back  [q] quit${RESET}`;
 
     process.stdout.write(screen(
       summary,
@@ -485,6 +501,7 @@ async function showLog(config: Config, initialDate?: string, withSummary = false
     else if (key === '\x1b[C') currentISO = datesWithRecords[jumpToMonth(datesWithRecords, idxInDates, +1)];
     else if (key === '\x1b[D') currentISO = datesWithRecords[jumpToMonth(datesWithRecords, idxInDates, -1)];
     else if (key === '\x1b') return;
+    else if (key === 'q' || key === 'Q') return;
   }
 }
 
@@ -556,7 +573,7 @@ async function showDayPicker(config: Config): Promise<void> {
       ...rows,
       ...(scrollHint ? [scrollHint] : []),
       '',
-      `  ${DIM}[↑↓] day   [←→] month   [enter] view   [esc] back${RESET}`,
+      `  ${DIM}[↑↓] day  [←→] month  [enter] view  [esc] back  [q] quit${RESET}`,
     ));
 
     const key = await readKey();
@@ -567,7 +584,7 @@ async function showDayPicker(config: Config): Promise<void> {
     else if (key === '\r' || key === '\n') {
       await showLog(config, datesWithRecords[idx], false);
     }
-    else if (key === 'b' || key === 'B' || key === '\x1b')           return;
+    else if (key === 'q' || key === 'Q' || key === '\x1b')           return;
   }
 }
 
@@ -626,11 +643,12 @@ async function showInsights(config: Config): Promise<void> {
     '',
     streakLine,
     '',
-    `  ${DIM}[esc] back${RESET}`,
+    `  ${DIM}[esc] back  [q] quit${RESET}`,
   ));
 
   while (true) {
     const key = await readKey();
+    if (key === 'q' || key === 'Q') return;
     if (key === '\x1b') return;
   }
 }
