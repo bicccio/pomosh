@@ -2,6 +2,7 @@ import { readFile, writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
+import { safeWrite } from './errors.js';
 
 export interface Config {
   waveMin: number;
@@ -24,11 +25,21 @@ const DEFAULT_CONFIG: Config = {
 };
 
 export async function ensureDirectories(logDir: string): Promise<void> {
-  await mkdir(join(homedir(), '.surftime'), { recursive: true });
-  await mkdir(logDir, { recursive: true });
+  try {
+    await mkdir(join(homedir(), '.surftime'), { recursive: true });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Cannot create config directory: ${join(homedir(), '.surftime')}. Check permissions. (${msg})`);
+  }
+  try {
+    await mkdir(logDir, { recursive: true });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Cannot create config directory: ${logDir}. Check permissions. (${msg})`);
+  }
 }
 
-export async function saveConfig(config: Config): Promise<void> {
+export async function saveConfig(config: Config): Promise<boolean> {
   const content = [
     `wave_min = ${config.waveMin}`,
     `short_break_min = ${config.shortBreakMin}`,
@@ -36,7 +47,7 @@ export async function saveConfig(config: Config): Promise<void> {
     `notifications_enabled = ${config.notificationsEnabled ? 'true' : 'false'}`,
     `notification_sound = ${config.notificationSound}`,
   ].join('\n') + '\n';
-  await writeFile(config.configPath, content, 'utf-8');
+  return safeWrite(config.configPath, content);
 }
 
 export async function loadConfig(configPath?: string): Promise<Config> {

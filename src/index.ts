@@ -103,7 +103,7 @@ async function showMenu(logDir: string): Promise<0 | 1 | 2 | 3 | 4 | 5 | 'log'> 
 
 const NOTIFICATION_SOUNDS = ['default', 'Basso', 'Blow', 'Bottle', 'Frog', 'Funk', 'Glass', 'Hero', 'Morse', 'Ping', 'Pop', 'Purr', 'Sosumi', 'Submarine', 'Tink'];
 
-async function showSettings(config: Config): Promise<void> {
+async function showSettings(config: Config): Promise<boolean> {
   type NumericField = { kind: 'number'; label: string; key: 'waveMin' | 'shortBreakMin' | 'longBreakMin' };
   type BoolField    = { kind: 'bool';   label: string; key: 'notificationsEnabled' };
   type CycleField   = { kind: 'cycle';  label: string; key: 'notificationSound'; options: string[] };
@@ -199,8 +199,8 @@ async function showSettings(config: Config): Promise<void> {
       if (key === '\x1b[A' && idx > 0)                 { idx--; continue; }
       if (key === '\x1b[B' && idx < fields.length - 1) { idx++; continue; }
       if (key === '\x1b') {
-        if (hasChanges()) await saveConfig(config);
-        return;
+        if (hasChanges()) return await saveConfig(config);
+        return true;
       }
       if (currentField.kind === 'bool') {
         if (key === ' ' || key === '\r' || key === '\n' || key === '\x1b[C' || key === '\x1b[D') {
@@ -242,8 +242,8 @@ async function showSettings(config: Config): Promise<void> {
         editing = true;
         editBuf = '';
       } else if (key === '\x1b') {
-        if (hasChanges()) await saveConfig(config);
-        return;
+        if (hasChanges()) return await saveConfig(config);
+        return true;
       }
     }
   }
@@ -652,7 +652,8 @@ async function runSession(taskName: string, config: Config): Promise<'quit' | 'm
 
     if (result === 'cancelled') return 'menu';
 
-    await appendWave(config.logDir, taskName, currentTime(), config.waveMin);
+    const logged = await appendWave(config.logDir, taskName, currentTime(), config.waveMin);
+    if (!logged) process.stderr.write(`⚠ Wave not saved to log — session continues\n`);
     sendNotification(config.notificationsEnabled, 'surf 🏄', `Wave #${sessionNumber} complete!`, config.notificationSound);
 
     const postSummary = await buildSummary(config.logDir);
@@ -713,7 +714,7 @@ async function main() {
       if (choice === 1)     { await showLog(config); }
       if (choice === 2)     { await showStats(config); }
       if (choice === 3)     { await showInsights(config); }
-      if (choice === 4)     { await showSettings(config); }
+      if (choice === 4)     { const ok = await showSettings(config); if (!ok) process.stdout.write(`\n  ⚠ Settings changed but couldn't be saved\n`); }
     } while (choice !== 0);
 
     const allRecords = await readRecords(config.logDir);

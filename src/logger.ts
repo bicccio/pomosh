@@ -1,6 +1,7 @@
 import { readFile, appendFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
+import { safeAppend } from './errors.js';
 
 function todayISO(): string {
   const now = new Date();
@@ -37,10 +38,10 @@ export async function countTodayWaves(logDir: string): Promise<number> {
   return records.filter(r => r.date === today).length;
 }
 
-export async function appendWave(logDir: string, taskName: string, time: string, durationMin: number): Promise<void> {
+export async function appendWave(logDir: string, taskName: string, time: string, durationMin: number): Promise<boolean> {
   const date = todayISO();
   const record: WaveRecord = { date, time, duration_min: durationMin, task: taskName };
-  await appendFile(logFile(logDir), JSON.stringify(record) + '\n');
+  return safeAppend(logFile(logDir), JSON.stringify(record) + '\n');
 }
 
 export async function listWaves(logDir: string, date?: string): Promise<void> {
