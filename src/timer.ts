@@ -1,24 +1,12 @@
 import { spawn } from 'child_process';
+import { HIDE_CURSOR, SHOW_CURSOR, ENTER_ALT, EXIT_ALT, withRawMode } from './terminal.js';
 
-const HIDE_CURSOR = '\x1b[?25l';
-const SHOW_CURSOR = '\x1b[?25h';
-const ENTER_ALT   = '\x1b[?1049h';
-const EXIT_ALT    = '\x1b[?1049l';
 const CLEAR       = '\x1b[2J\x1b[H';
 const BOLD        = '\x1b[1m';
 const DIM         = '\x1b[2m';
 const RESET       = '\x1b[0m';
 
-export function setupScreen(): void {
-  process.stdout.write(ENTER_ALT + HIDE_CURSOR);
-  const cleanup = () => { process.stdout.write(SHOW_CURSOR + EXIT_ALT); process.exit(0); };
-  process.on('SIGINT', cleanup);
-  process.on('SIGTERM', cleanup);
-}
-
-export function teardownScreen(): void {
-  process.stdout.write(SHOW_CURSOR + EXIT_ALT);
-}
+export { setupTerminal, teardownTerminal } from './terminal.js';
 
 // ─── drawing ──────────────────────────────────────────────────────────────────
 
@@ -166,61 +154,51 @@ export async function runTimer(
   isBreak: boolean,
   totalMinToday: number,
 ): Promise<'completed' | 'cancelled'> {
-  let remaining = minutes * 60;
-  let interruptResolve: (() => void) | null = null;
+  return withRawMode(async () => {
+    let remaining = minutes * 60;
+    let interruptResolve: (() => void) | null = null;
 
-  process.stdin.setRawMode(true);
-  process.stdin.resume();
-  process.stdin.setEncoding('utf8');
-
-  const onKey = (key: string) => {
-    if (key === '\u0003') { process.stdout.write(SHOW_CURSOR + EXIT_ALT); process.exit(0); }
-    if (key === '\x1b' && interruptResolve) {
-      const r = interruptResolve;
-      interruptResolve = null;
-      r();
-    }
-  };
-  process.stdin.on('data', onKey);
-
-  const cleanupStdin = () => {
-    process.stdin.removeListener('data', onKey);
-    process.stdin.setRawMode(false);
-    process.stdin.pause();
-  };
-
-  while (remaining > 0) {
-    process.stdout.write(buildTimerScreen(sessionNumber, taskName, remaining, minutes, isBreak, totalMinToday));
-
-    const interrupted = await new Promise<boolean>((resolve) => {
-      const timer = setTimeout(() => { interruptResolve = null; resolve(false); }, 1000);
-      interruptResolve = () => { clearTimeout(timer); resolve(true); };
-    });
-
-    if (interrupted) {
-      cleanupStdin();
-      process.stdout.write(
-        buildTimerScreen(sessionNumber, taskName, remaining, minutes, isBreak, totalMinToday) +
-        `\n\n  ${isBreak ? 'Break' : 'Wave'} interrupted — cancel it? ${DIM}[y] yes   [n] no${RESET}`,
-      );
-
-      while (true) {
-        const key = await readKey();
-        if (key === 'y' || key === 'Y') return 'cancelled';
-        if (key === 'n' || key === 'N' || key === '\x1b') break;
+    const onKey = (key: string) => {
+      if (key === '\u0003') { process.stdout.write(SHOW_CURSOR + EXIT_ALT); process.exit(0); }
+      if (key === '\x1b' && interruptResolve) {
+        const r = interruptResolve;
+        interruptResolve = null;
+        r();
       }
-      process.stdin.setRawMode(true);
-      process.stdin.resume();
-      process.stdin.setEncoding('utf8');
-      process.stdin.on('data', onKey);
-    } else {
-      remaining--;
-    }
-  }
+    };
+    process.stdin.on('data', onKey);
 
-  process.stdout.write(buildTimerScreen(sessionNumber, taskName, 0, minutes, isBreak, totalMinToday));
-  cleanupStdin();
-  return 'completed';
+    try {
+      while (remaining > 0) {
+        process.stdout.write(buildTimerScreen(sessionNumber, taskName, remaining, minutes, isBreak, totalMinToday));
+
+        const interrupted = await new Promise<boolean>((resolve) => {
+          const timer = setTimeout(() => { interruptResolve = null; resolve(false); }, 1000);
+          interruptResolve = () => { clearTimeout(timer); resolve(true); };
+        });
+
+        if (interrupted) {
+          process.stdout.write(
+            buildTimerScreen(sessionNumber, taskName, remaining, minutes, isBreak, totalMinToday) +
+            `\n\n  ${isBreak ? 'Break' : 'Wave'} interrupted — cancel it? ${DIM}[y] yes   [n] no${RESET}`,
+          );
+
+          while (true) {
+            const key = await readKey();
+            if (key === 'y' || key === 'Y') return 'cancelled';
+            if (key === 'n' || key === 'N' || key === '\x1b') break;
+          }
+        } else {
+          remaining--;
+        }
+      }
+
+      process.stdout.write(buildTimerScreen(sessionNumber, taskName, 0, minutes, isBreak, totalMinToday));
+      return 'completed';
+    } finally {
+      process.stdin.removeListener('data', onKey);
+    }
+  });
 }
 
 // ─── notifications ────────────────────────────────────────────────────────────

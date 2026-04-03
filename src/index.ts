@@ -3,8 +3,8 @@ import { loadConfig, saveConfig, ensureDirectories, Config } from './config.js';
 import { countTodayWaves, appendWave, readRecords, listWaves } from './logger.js';
 import { getWavesPerWeekday, getWavesPerTimeSlot, getStreaks } from './analytics.js';
 import {
-  setupScreen,
-  teardownScreen,
+  setupTerminal,
+  teardownTerminal,
   screen,
   readKey,
   runTimer,
@@ -15,9 +15,8 @@ import {
   summaryBox,
   sectionHeader,
 } from './timer.js';
+import { HIDE_CURSOR, SHOW_CURSOR } from './terminal.js';
 
-const SHOW_CURSOR = '\x1b[?25h';
-const HIDE_CURSOR = '\x1b[?25l';
 const DIM    = '\x1b[2m';
 const RESET  = '\x1b[0m';
 const WAVE_COLOR = '\x1b[38;2;255;165;0m';
@@ -689,13 +688,13 @@ async function main() {
   if (options.listDate) { await listWaves(config.logDir, options.listDate);  process.exit(0); }
 
   // Fullscreen from the very start
-  setupScreen();
+  setupTerminal();
 
   // If task was passed via CLI, skip the menu entirely
   if (cliTaskName) {
     const outcome = await runSession(cliTaskName[0].toUpperCase() + cliTaskName.slice(1), config);
     if (outcome === 'quit') {
-      teardownScreen();
+      teardownTerminal();
       process.stdout.write('\n  Great work! 🏄\n\n');
       return;
     }
@@ -709,7 +708,7 @@ async function main() {
     do {
       choice = await showMenu(config.logDir);
 
-      if (choice === 5)     { teardownScreen(); process.exit(0); }
+      if (choice === 5)     { teardownTerminal(); process.exit(0); }
       if (choice === 'log') { await showLog(config); }
       if (choice === 1)     { await showLog(config); }
       if (choice === 2)     { await showStats(config); }
@@ -731,7 +730,7 @@ async function main() {
 
     const outcome = await runSession(name[0].toUpperCase() + name.slice(1), config);
     if (outcome === 'quit') {
-      teardownScreen();
+      teardownTerminal();
       process.stdout.write('\n  Great work! 🏄\n\n');
       return;
     }
