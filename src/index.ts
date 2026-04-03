@@ -1,5 +1,5 @@
 import { parseCli } from './cli.js';
-import { loadConfig, saveConfig, ensureDirectories, Config } from './config.js';
+import { loadConfig, saveConfig, ensureDirectories, Config, CONSTRAINTS } from './config.js';
 import { countTodayWaves, appendWave, readRecords, listWaves } from './logger.js';
 import { getWavesPerWeekday, getWavesPerTimeSlot, getStreaks } from './analytics.js';
 import {
@@ -106,15 +106,15 @@ async function showMenu(logDir: string): Promise<0 | 1 | 2 | 3 | 4 | 5 | 'log'> 
 const NOTIFICATION_SOUNDS = ['default', 'Basso', 'Blow', 'Bottle', 'Frog', 'Funk', 'Glass', 'Hero', 'Morse', 'Ping', 'Pop', 'Purr', 'Sosumi', 'Submarine', 'Tink'];
 
 async function showSettings(config: Config): Promise<void> {
-  type NumericField = { kind: 'number'; label: string; key: 'waveMin' | 'shortBreakMin' | 'longBreakMin' };
+  type NumericField = { kind: 'number'; label: string; key: 'waveMin' | 'shortBreakMin' | 'longBreakMin'; min: number; max: number };
   type BoolField    = { kind: 'bool';   label: string; key: 'notificationsEnabled' };
   type CycleField   = { kind: 'cycle';  label: string; key: 'notificationSound'; options: string[] };
   type Field = NumericField | BoolField | CycleField;
 
   const fields: Field[] = [
-    { kind: 'number', label: 'Wave',            key: 'waveMin',             },
-    { kind: 'number', label: 'Short break',    key: 'shortBreakMin',       },
-    { kind: 'number', label: 'Long break',     key: 'longBreakMin',        },
+    { kind: 'number', label: 'Wave',            key: 'waveMin',             min: 1, max: 120 },
+    { kind: 'number', label: 'Short break',    key: 'shortBreakMin',       min: 1, max: 30  },
+    { kind: 'number', label: 'Long break',     key: 'longBreakMin',        min: 1, max: 60  },
     { kind: 'bool',   label: 'Notifications',  key: 'notificationsEnabled' },
     { kind: 'cycle',  label: 'Sound',          key: 'notificationSound',   options: NOTIFICATION_SOUNDS },
   ];
@@ -130,6 +130,7 @@ async function showSettings(config: Config): Promise<void> {
   let idx = 0;
   let editing = false;
   let editBuf = '';
+  let editError: string | null = null;
 
   const renderRow = (i: number, inEdit: boolean, buf: string) => {
     const field = fields[i];
@@ -145,7 +146,10 @@ async function showSettings(config: Config): Promise<void> {
       const next = opts[(ci + 1) % opts.length];
       return `  \x1b[1m❯\x1b[0m ${label} ${DIM}${prev}${RESET} \x1b[1m${config[field.key]}\x1b[0m ${DIM}${next}${RESET}`;
     }
-    if (inEdit) return `  \x1b[1m❯\x1b[0m ${label} [${buf}] min`;
+    if (inEdit) {
+      const err = editError ? ` ${DIM}(${editError})${RESET}` : '';
+      return `  \x1b[1m❯\x1b[0m ${label} [${buf}] min${err}`;
+    }
     return `  \x1b[1m❯\x1b[0m ${label} ${config[field.key]} min`;
   };
 
@@ -223,19 +227,31 @@ async function showSettings(config: Config): Promise<void> {
       if (key === '\r' || key === '\n') {
         if (editBuf !== '') {
           const parsed = parseInt(editBuf, 10);
-          if (!isNaN(parsed) && parsed > 0) {
-            (config as unknown as Record<string, unknown>)[fields[idx].key] = parsed;
+          const field = fields[idx];
+          if (field.kind === 'number' && !isNaN(parsed)) {
+            if (parsed < field.min || parsed > field.max) {
+              editError = `${field.min}–${field.max}`;
+              continue;
+            }
+            (config as unknown as Record<string, unknown>)[field.key] = parsed;
+          } else if (isNaN(parsed)) {
+            editError = 'not a number';
+            continue;
           }
         }
         editing = false;
         editBuf = '';
+        editError = null;
       } else if (key === '\x1b') {
-        if (hasChanges()) await saveConfig(config);
-        return;
+        editing = false;
+        editBuf = '';
+        editError = null;
       } else if (key === '\x7f' || key === '\b') {
         editBuf = editBuf.slice(0, -1);
+        editError = null;
       } else if (key >= '0' && key <= '9') {
         editBuf += key;
+        editError = null;
       }
     } else {
       if (key === '\x1b[A' && idx > 0)                    idx--;
