@@ -244,7 +244,6 @@ async function showSettings(config: Config): Promise<boolean> {
       else if (key === '\r' || key === '\n') {
         editing = true;
         editBuf = '';
-      } else if (key === '\x1b') {
       } else if (key === 'q' || key === 'Q') {
         if (hasChanges()) return await saveConfig(config);
         return true;
