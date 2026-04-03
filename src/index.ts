@@ -169,8 +169,8 @@ async function showSettings(config: Config): Promise<boolean> {
     });
 
     const hint = editing
-      ? `  ${DIM}[enter] confirm   [esc] cancel   [q] quit${RESET}`
-      : `  ${DIM}[↑↓] navigate   [enter/←/→/space] edit   [esc] back  [q] quit${RESET}`;
+      ? `  ${DIM}[enter] confirm  [esc] cancel${RESET}`
+      : `  ${DIM}[↑↓] navigate  [enter/←/→/space] edit  [esc] back${RESET}`;
 
     process.stdout.write(screen(
       null,
@@ -200,13 +200,9 @@ async function showSettings(config: Config): Promise<boolean> {
     if ((currentField.kind === 'bool' || currentField.kind === 'cycle') && !editing) {
       if (key === '\x1b[A' && idx > 0)                 { idx--; continue; }
       if (key === '\x1b[B' && idx < fields.length - 1) { idx++; continue; }
-      if (key === 'q' || key === 'Q') {
-        if (hasChanges()) return await saveConfig(config);
-        return true;
-      }
       if (key === '\x1b') {
-        if (hasChanges()) return await saveConfig(config);
-        return true;
+        if (hasChanges()) await saveConfig(config);
+        return;
       }
       if (currentField.kind === 'bool') {
         if (key === ' ' || key === '\r' || key === '\n' || key === '\x1b[C' || key === '\x1b[D') {
@@ -234,8 +230,8 @@ async function showSettings(config: Config): Promise<boolean> {
         editing = false;
         editBuf = '';
       } else if (key === '\x1b') {
-        editing = false;
-        editBuf = '';
+        if (hasChanges()) await saveConfig(config);
+        return;
       } else if (key === '\x7f' || key === '\b') {
         editBuf = editBuf.slice(0, -1);
       } else if (key >= '0' && key <= '9') {
@@ -247,12 +243,9 @@ async function showSettings(config: Config): Promise<boolean> {
       else if (key === '\r' || key === '\n') {
         editing = true;
         editBuf = '';
-      } else if (key === 'q' || key === 'Q') {
-        if (hasChanges()) return await saveConfig(config);
-        return true;
       } else if (key === '\x1b') {
-        if (hasChanges()) return await saveConfig(config);
-        return true;
+        if (hasChanges()) await saveConfig(config);
+        return;
       }
     }
   }
@@ -369,8 +362,8 @@ async function showStats(config: Config): Promise<void> {
       barLines = [...chartRows, axis];
     }
 
-    const nextDim = offset === 0 ? DIM : '';
-    const footer = `  ${DIM}[w] weekly  [m] monthly  [←] prev  ${nextDim}[→] next${DIM}  [esc] back  [q] quit${RESET}`;
+    const navHints = offset < 0 ? `[←] prev  [→] next` : `[←] prev`;
+    const footer = `  ${DIM}[w] weekly  [m] monthly  ${navHints}  [esc] back${RESET}`;
     const total = `  Total: ${totalPomos} 🏄  ${totalMin} min`;
 
     process.stdout.write(screen(null, '', sectionHeader('Stats'), '', subtitle, '', ...barLines, '', total, '', footer));
@@ -394,8 +387,13 @@ async function showTextInput(summary: string | null, prompt: string, placeholder
   let savedInput = '';
 
   while (true) {
-    const display = value || `${DIM}${placeholder}${RESET}`;
-    const historyHint = history.length > 0 ? `  ${DIM}[↑↓] history   [esc] menu${RESET}` : `  ${DIM}[esc] menu${RESET}`;
+    const effectivePlaceholder = history.length > 0
+      ? `${placeholder} (↑↓ history)`
+      : placeholder;
+    const display = value || `${DIM}${effectivePlaceholder}${RESET}`;
+    const historyHint = history.length > 0
+      ? `  ${DIM}[↑↓] previous tasks   [esc] menu${RESET}`
+      : `  ${DIM}[esc] menu${RESET}`;
     process.stdout.write(screen(
       summary,
       '',
@@ -412,7 +410,7 @@ async function showTextInput(summary: string | null, prompt: string, placeholder
     const key = await readKey();
     process.stdout.write(HIDE_CURSOR);
 
-    if (key === '\r' || key === '\n')        return value.trim() || placeholder;
+    if (key === '\r' || key === '\n')        return value.trim() || effectivePlaceholder;
     if (key === '\u0003' || key === '\x1b') return null; // Ctrl+C or Esc → back to menu
     if (key === '\x7f' || key === '\b') {
       value = value.slice(0, -1);
@@ -499,6 +497,7 @@ async function showLog(config: Config, initialDate?: string, withSummary = false
     }
     else if (key === 'q' || key === 'Q') return;
     else if (key === '\x1b') return;
+    else if (key === 'q' || key === 'Q') return;
   }
 }
 

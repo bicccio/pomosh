@@ -122,7 +122,7 @@ function buildTimerScreen(
     `  ${mm}:${ss}`,
     `  ${bar}`,
     '',
-    `  ${DIM}[esc] interrupt${RESET}`,
+    `  ${DIM}[esc] interrupt  [q] quit${RESET}`,
   );
 }
 
