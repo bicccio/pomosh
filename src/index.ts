@@ -28,59 +28,14 @@ function currentTime(): string {
   return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 }
 
-const BLOCK_TITLE = [
-  '  ███████ ███████ █████  ███████ ██████ ',
-  ' ██      ██      ██  ██ ██      ██   ██',
-  ' ███████ █████   █████  █████   ██████ ',
-  '      ██ ██      ██  ██ ██      ██   ██',
-  ' ███████ ███████ ██  ██ ███████ ██   ██',
-  ' ░░░░░░░ ░░░░░░░ ░░░░░░ ░░░░░░░ ░░░░░░ ',
-];
-
-const TITLE_GRADIENT = [
-  '\x1b[38;2;255;220;50m',
-  '\x1b[38;2;255;200;40m',
-  '\x1b[38;2;255;180;30m',
-  '\x1b[38;2;255;160;20m',
-  '\x1b[38;2;255;150;10m',
-  '\x1b[38;2;255;140;0m',
-];
-
-async function showWelcome(): Promise<'start' | 'menu' | 'quit'> {
-  const titleLines = BLOCK_TITLE.map((row, i) => `  ${BOLD}${TITLE_GRADIENT[i]}${row}${RESET}`);
-  const sep = '─'.repeat(Math.max(0, (process.stdout.columns || 80) - 4));
-
-  while (true) {
-    process.stdout.write(screen(
-      null,
-      '',
-      ...titleLines,
-      `  ${TITLE_GRADIENT[5]}${sep}${RESET}`,
-      '',
-      `  ${BOLD}Welcome to Surf 🏄${RESET}`,
-      '',
-      `  A minimal focus timer for the terminal.`,
-      `  Work in focused waves, take breaks,`,
-      `  and track your progress over time.`,
-      '',
-      `  ${BOLD}Press Enter${RESET} to start your first wave`,
-      `  ${DIM}Or ↓ to explore the menu${RESET}`,
-      '',
-      `  ${DIM}[enter] start  [↓] menu  [q] quit${RESET}`,
-    ));
-
-    const key = await readKey();
-    if (key === '\r' || key === '\n' || key === ' ') return 'start';
-    if (key === '\x1b[B' || key === '\x1b[A') return 'menu';
-    if (key === 'q' || key === 'Q' || key === '\u0003' || key === '\x1b') return 'quit';
-  }
-}
-
 async function buildSummary(logDir: string): Promise<string | null> {
   const recs = await readRecords(logDir);
 
   if (recs.length === 0) {
-    return summaryBox(['No waves yet — start your first! 🏄'], 'surf');
+    return summaryBox([
+      `  ${BOLD}Ready for your first wave 🏄${RESET}`,
+      `  ${BOLD}Select "Start a new wave" to begin${RESET}`,
+    ], 'surf');
   }
 
   const todayISO = new Date().toISOString().slice(0, 10);
@@ -738,26 +693,6 @@ async function main() {
   // Fullscreen from the very start
   setupScreen();
 
-  // First launch onboarding
-  const records = await readRecords(config.logDir);
-  if (records.length === 0 && !cliTaskName) {
-    const welcome = await showWelcome();
-    if (welcome === 'quit') { teardownScreen(); process.exit(0); }
-    if (welcome === 'start') {
-      const name = await showTextInput(null, 'What are you working on?', 'e.g. writing docs');
-      if (name) {
-        const outcome = await runSession(name[0].toUpperCase() + name.slice(1), config);
-        if (outcome === 'quit') {
-          teardownScreen();
-          process.stdout.write('\n  Great work! 🏄\n\n');
-          return;
-        }
-      }
-    }
-    // 'menu' → fall through to the interactive menu loop
-  }
-
-  // If task was passed via CLI, skip the menu entirely
   if (cliTaskName) {
     const outcome = await runSession(cliTaskName[0].toUpperCase() + cliTaskName.slice(1), config);
     if (outcome === 'quit') {
