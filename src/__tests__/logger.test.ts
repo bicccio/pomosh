@@ -55,9 +55,11 @@ describe('readRecords', () => {
       `{"date":"${TODAY}","time":"09:00","duration_min":25,"task":"Good"}\ncorrupted line here\n{"date":"${TODAY}","time":"10:00","duration_min":25,"task":"Also good"}`
     );
 
-    // The current code will crash on JSON.parse of corrupted line
-    // This test verifies the expected behavior AFTER the fix
-    await expect(readRecords('/some/dir')).rejects.toThrow();
+    // Corrupted lines are skipped gracefully (task-1.2 fix)
+    const records = await readRecords('/some/dir');
+    expect(records).toHaveLength(2);
+    expect(records[0].task).toBe('Good');
+    expect(records[1].task).toBe('Also good');
   });
 });
 
