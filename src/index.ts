@@ -402,22 +402,25 @@ async function showTextInput(summary: string | null, prompt: string, placeholder
   let savedInput = '';
 
   while (true) {
-    const effectivePlaceholder = history.length > 0
-      ? `${placeholder} (↑↓ history)`
-      : placeholder;
-    const display = value || `${DIM}${effectivePlaceholder}${RESET}`;
-    const historyHint = history.length > 0
-      ? `  ${DIM}[↑↓] previous tasks   [esc] menu${RESET}`
-      : `  ${DIM}[esc] menu${RESET}`;
-    process.stdout.write(screen(
-      summary,
-      '',
+    const display = value || `${DIM}${placeholder}${RESET}`;
+    const lines: string[] = [
       `  ${prompt}`,
       '',
       `  \x1b[1m❯\x1b[0m ${display}`,
-      '',
-      historyHint,
-    ));
+    ];
+
+    if (history.length > 0) {
+      const recent = history.slice(0, 3);
+      const more = history.length > 3 ? `${DIM} ... and ${history.length - 3} more${RESET}` : '';
+      lines.push('', `  ${DIM}Recent: ${recent.join(' · ')}${more}${RESET}`);
+    }
+
+    const historyHint = history.length > 0
+      ? `  ${DIM}[↑↓] previous tasks   [esc] menu${RESET}`
+      : `  ${DIM}[esc] menu${RESET}`;
+    lines.push('', historyHint);
+
+    process.stdout.write(screen(summary, '', ...lines));
     // Position cursor at end of input field (2 lines above last line, col after "  ❯ " + value)
     process.stdout.write(`\x1b[2A\x1b[${5 + value.length}G`);
     process.stdout.write(SHOW_CURSOR);
@@ -425,7 +428,7 @@ async function showTextInput(summary: string | null, prompt: string, placeholder
     const key = await readKey();
     process.stdout.write(HIDE_CURSOR);
 
-    if (key === '\r' || key === '\n')        return value.trim() || effectivePlaceholder;
+    if (key === '\r' || key === '\n')        return value.trim() || placeholder;
     if (key === '\u0003' || key === '\x1b') return null; // Ctrl+C or Esc → back to menu
     if (key === '\x7f' || key === '\b') {
       value = value.slice(0, -1);
