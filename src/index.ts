@@ -31,7 +31,10 @@ async function buildSummary(logDir: string): Promise<string | null> {
   const recs = await readRecords(logDir);
 
   if (recs.length === 0) {
-    return summaryBox(['No waves yet — start your first! 🏄'], 'surf');
+    return summaryBox([
+      `  ${BOLD}Ready for your first wave 🏄${RESET}`,
+      `  ${BOLD}Select "Start a new wave" to begin${RESET}`,
+    ], 'surf');
   }
 
   const todayISO = new Date().toISOString().slice(0, 10);
@@ -703,7 +706,6 @@ async function main() {
   // Fullscreen from the very start
   setupTerminal();
 
-  // If task was passed via CLI, skip the menu entirely
   if (cliTaskName) {
     const outcome = await runSession(cliTaskName[0].toUpperCase() + cliTaskName.slice(1), config);
     if (outcome === 'quit') {
