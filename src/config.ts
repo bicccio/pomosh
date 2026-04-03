@@ -13,6 +13,15 @@ export interface Config {
   configPath: string;
 }
 
+const CONSTRAINTS = {
+  waveMin:       { min: 1,  max: 120, default: 25 },
+  shortBreakMin: { min: 1,  max: 30,  default: 5  },
+  longBreakMin:  { min: 1,  max: 60,  default: 15 },
+};
+
+const ALLOWED_SOUNDS = ['default', 'Basso', 'Blow', 'Bottle', 'Frog', 'Funk',
+  'Glass', 'Hero', 'Morse', 'Ping', 'Pop', 'Purr', 'Sosumi', 'Submarine', 'Tink'];
+
 const DEFAULT_CONFIG: Config = {
   waveMin: 25,
   shortBreakMin: 5,
@@ -22,6 +31,43 @@ const DEFAULT_CONFIG: Config = {
   logDir: join(homedir(), '.surftime', 'waves'),
   configPath: join(homedir(), '.surftime', 'surftime.cfg'),
 };
+
+function clamp(val: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, val));
+}
+
+export function validateConfigValue(key: string, raw: unknown): { value: unknown; warning: string | null } {
+  if (key === 'wave_min') {
+    const v = parseInt(String(raw), 10);
+    if (isNaN(v) || v < CONSTRAINTS.waveMin.min || v > CONSTRAINTS.waveMin.max) {
+      return { value: CONSTRAINTS.waveMin.default, warning: `Invalid wave_min (${raw}), using default ${CONSTRAINTS.waveMin.default}` };
+    }
+    return { value: clamp(v, CONSTRAINTS.waveMin.min, CONSTRAINTS.waveMin.max), warning: null };
+  }
+  if (key === 'short_break_min') {
+    const v = parseInt(String(raw), 10);
+    if (isNaN(v) || v < CONSTRAINTS.shortBreakMin.min || v > CONSTRAINTS.shortBreakMin.max) {
+      return { value: CONSTRAINTS.shortBreakMin.default, warning: `Invalid short_break_min (${raw}), using default ${CONSTRAINTS.shortBreakMin.default}` };
+    }
+    return { value: clamp(v, CONSTRAINTS.shortBreakMin.min, CONSTRAINTS.shortBreakMin.max), warning: null };
+  }
+  if (key === 'long_break_min') {
+    const v = parseInt(String(raw), 10);
+    if (isNaN(v) || v < CONSTRAINTS.longBreakMin.min || v > CONSTRAINTS.longBreakMin.max) {
+      return { value: CONSTRAINTS.longBreakMin.default, warning: `Invalid long_break_min (${raw}), using default ${CONSTRAINTS.longBreakMin.default}` };
+    }
+    return { value: clamp(v, CONSTRAINTS.longBreakMin.min, CONSTRAINTS.longBreakMin.max), warning: null };
+  }
+  if (key === 'notification_sound') {
+    if (raw && !ALLOWED_SOUNDS.includes(String(raw))) {
+      return { value: 'default', warning: `Invalid sound "${raw}", using default` };
+    }
+    return { value: raw || 'default', warning: null };
+  }
+  return { value: raw, warning: null };
+}
+
+export { CONSTRAINTS, ALLOWED_SOUNDS };
 
 export async function ensureDirectories(logDir: string): Promise<void> {
   await mkdir(join(homedir(), '.surftime'), { recursive: true });
@@ -59,11 +105,22 @@ export async function loadConfig(configPath?: string): Promise<Config> {
       if (eqIdx === -1) continue;
       const key = trimmed.slice(0, eqIdx).trim();
       const val = trimmed.slice(eqIdx + 1).trim();
-      if (key === 'wave_min') cfg.waveMin = parseInt(val, 10) || cfg.waveMin;
-      if (key === 'short_break_min') cfg.shortBreakMin = parseInt(val, 10) || cfg.shortBreakMin;
-      if (key === 'long_break_min') cfg.longBreakMin = parseInt(val, 10) || cfg.longBreakMin;
+
+      let configKey: string | null = null;
+      if (key === 'wave_min') configKey = 'wave_min';
+      else if (key === 'short_break_min') configKey = 'short_break_min';
+      else if (key === 'long_break_min') configKey = 'long_break_min';
+      else if (key === 'notification_sound') configKey = 'notification_sound';
+
+      if (configKey) {
+        const { value, warning } = validateConfigValue(configKey, val);
+        if (warning) process.stderr.write(`⚠ ${warning}\n`);
+        if (configKey === 'wave_min') cfg.waveMin = value as number;
+        else if (configKey === 'short_break_min') cfg.shortBreakMin = value as number;
+        else if (configKey === 'long_break_min') cfg.longBreakMin = value as number;
+        else if (configKey === 'notification_sound') cfg.notificationSound = value as string;
+      }
       if (key === 'notifications_enabled') cfg.notificationsEnabled = val === 'true';
-      if (key === 'notification_sound' && val) cfg.notificationSound = val;
     }
   } catch {
     // config file unreadable — use defaults
