@@ -385,16 +385,24 @@ async function showTextInput(summary: string | null, prompt: string, placeholder
 
   while (true) {
     const display = value || `${DIM}${placeholder}${RESET}`;
-    const historyHint = history.length > 0 ? `  ${DIM}[↑↓] history   [esc] menu${RESET}` : `  ${DIM}[esc] menu${RESET}`;
-    process.stdout.write(screen(
-      summary,
-      '',
+    const lines: string[] = [
       `  ${prompt}`,
       '',
       `  \x1b[1m❯\x1b[0m ${display}`,
-      '',
-      historyHint,
-    ));
+    ];
+
+    if (history.length > 0) {
+      const recent = history.slice(0, 3);
+      const more = history.length > 3 ? `${DIM} ... and ${history.length - 3} more${RESET}` : '';
+      lines.push('', `  ${DIM}Recent: ${recent.join(' · ')}${more}${RESET}`);
+    }
+
+    const historyHint = history.length > 0
+      ? `  ${DIM}[↑↓] previous tasks   [esc] menu${RESET}`
+      : `  ${DIM}[esc] menu${RESET}`;
+    lines.push('', historyHint);
+
+    process.stdout.write(screen(summary, '', ...lines));
     // Position cursor at end of input field (2 lines above last line, col after "  ❯ " + value)
     process.stdout.write(`\x1b[2A\x1b[${5 + value.length}G`);
     process.stdout.write(SHOW_CURSOR);
