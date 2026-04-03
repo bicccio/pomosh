@@ -60,8 +60,27 @@ export async function listWaves(logDir: string, date?: string): Promise<void> {
     return;
   }
 
-  for (const r of filtered) {
-    process.stdout.write(JSON.stringify(r) + '\n');
+  if (process.stdout.isTTY) {
+    const padTime = 8;
+    const padDur = 10;
+    const totalMin = filtered.reduce((s, r) => s + r.duration_min, 0);
+    const BOLD = '\x1b[1m';
+    const DIM = '\x1b[2m';
+    const RESET = '\x1b[0m';
+
+    console.log('');
+    console.log(`  ${BOLD}Time${RESET}${' '.repeat(padTime - 4)} ${BOLD}Duration${RESET}${' '.repeat(padDur - 8)} ${BOLD}Task${RESET}`);
+    console.log(`  ${DIM}${'─'.repeat(padTime)}${RESET} ${DIM}${'─'.repeat(padDur)}${RESET} ${DIM}${'─'.repeat(40)}${RESET}`);
+    for (const r of filtered) {
+      console.log(`  ${r.time.padEnd(padTime)} ${String(r.duration_min + ' min').padEnd(padDur)} ${r.task}`);
+    }
+    console.log('');
+    console.log(`  ${DIM}${filtered.length} wave${filtered.length !== 1 ? 's' : ''} · ${totalMin} min${RESET}`);
+    console.log('');
+  } else {
+    for (const r of filtered) {
+      process.stdout.write(JSON.stringify(r) + '\n');
+    }
   }
 }
 
