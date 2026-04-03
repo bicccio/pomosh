@@ -122,7 +122,7 @@ function buildTimerScreen(
     `  ${mm}:${ss}`,
     `  ${bar}`,
     '',
-    `  ${DIM}[esc] interrupt  [q] quit${RESET}`,
+    `  ${DIM}[esc] interrupt${RESET}`,
   );
 }
 
@@ -252,20 +252,19 @@ export async function askAfterWave(
   }
 }
 
-export async function askAfterBreak(summary: string | null): Promise<'next' | 'quit' | 'menu'> {
+export async function askAfterBreak(summary: string | null): Promise<'next' | 'menu'> {
   process.stdout.write(screen(
     summary,
     '',
     '  ✓  Break complete!',
     '',
-    '  [enter] next wave   [m] menu   [q] quit',
+    '  [enter] next wave   [esc] menu',
   ));
   process.stdout.write(SHOW_CURSOR);
   while (true) {
     const key = await readKey();
     if (key === '\r' || key === '\n' || key === ' ') { process.stdout.write(HIDE_CURSOR); return 'next'; }
-    if (key === 'm' || key === 'M')                  { process.stdout.write(HIDE_CURSOR); return 'menu'; }
-    if (key === 'q' || key === 'Q')                  return 'quit';
+    if (key === '\x1b')                              { process.stdout.write(HIDE_CURSOR); return 'menu'; }
   }
 }
 

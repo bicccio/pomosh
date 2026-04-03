@@ -105,7 +105,7 @@ async function showMenu(logDir: string): Promise<0 | 1 | 2 | 3 | 4 | 5 | 'log'> 
 
 const NOTIFICATION_SOUNDS = ['default', 'Basso', 'Blow', 'Bottle', 'Frog', 'Funk', 'Glass', 'Hero', 'Morse', 'Ping', 'Pop', 'Purr', 'Sosumi', 'Submarine', 'Tink'];
 
-async function showSettings(config: Config): Promise<boolean> {
+async function showSettings(config: Config): Promise<void> {
   type NumericField = { kind: 'number'; label: string; key: 'waveMin' | 'shortBreakMin' | 'longBreakMin' };
   type BoolField    = { kind: 'bool';   label: string; key: 'notificationsEnabled' };
   type CycleField   = { kind: 'cycle';  label: string; key: 'notificationSound'; options: string[] };
@@ -376,7 +376,6 @@ async function showStats(config: Config): Promise<void> {
     else if (key === 'm' || key === 'M') { mode = 'month'; offset = 0; }
     else if (key === '\x1b[D')           offset--;
     else if (key === '\x1b[C' && offset < 0) offset++;
-    else if (key === 'q' || key === 'Q') return;
     else if (key === '\x1b') return;
   }
 }
@@ -473,7 +472,7 @@ async function showLog(config: Config, initialDate?: string, withSummary = false
 
     const prevDim = hasPrev ? '' : DIM;
     const nextDim = hasNext ? '' : DIM;
-    const footer = `  ${DIM}[↑↓] day  [←→] month  [enter] view  [esc] back  [q] quit${RESET}`;
+    const footer = `  ${DIM}[↑↓] day  [←→] month  [esc] back${RESET}`;
 
     process.stdout.write(screen(
       summary,
@@ -495,9 +494,7 @@ async function showLog(config: Config, initialDate?: string, withSummary = false
     else if (key === '\r' || key === '\n') {
       await showLog(config, currentISO, true);
     }
-    else if (key === 'q' || key === 'Q') return;
     else if (key === '\x1b') return;
-    else if (key === 'q' || key === 'Q') return;
   }
 }
 
@@ -569,7 +566,7 @@ async function showDayPicker(config: Config): Promise<void> {
       ...rows,
       ...(scrollHint ? [scrollHint] : []),
       '',
-      `  ${DIM}[↑↓] day  [←→] month  [enter] view  [esc] back  [q] quit${RESET}`,
+      `  ${DIM}[↑↓] day  [←→] month  [enter] view  [esc] back${RESET}`,
     ));
 
     const key = await readKey();
@@ -580,7 +577,7 @@ async function showDayPicker(config: Config): Promise<void> {
     else if (key === '\r' || key === '\n') {
       await showLog(config, datesWithRecords[idx], false);
     }
-    else if (key === 'q' || key === 'Q' || key === '\x1b')           return;
+    else if (key === 'b' || key === 'B' || key === '\x1b')           return;
   }
 }
 
@@ -639,12 +636,11 @@ async function showInsights(config: Config): Promise<void> {
     '',
     streakLine,
     '',
-    `  ${DIM}[esc] back  [q] quit${RESET}`,
+    `  ${DIM}[esc] back${RESET}`,
   ));
 
   while (true) {
     const key = await readKey();
-    if (key === 'q' || key === 'Q') return;
     if (key === '\x1b') return;
   }
 }
@@ -666,8 +662,7 @@ async function runSession(taskName: string, config: Config): Promise<'quit' | 'm
 
     if (result === 'cancelled') return 'menu';
 
-    const logged = await appendWave(config.logDir, taskName, currentTime(), config.waveMin);
-    if (!logged) process.stderr.write(`⚠ Wave not saved to log — session continues\n`);
+    await appendWave(config.logDir, taskName, currentTime(), config.waveMin);
     sendNotification(config.notificationsEnabled, 'surf 🏄', `Wave #${sessionNumber} complete!`, config.notificationSound);
 
     const postSummary = await buildSummary(config.logDir);
@@ -684,8 +679,7 @@ async function runSession(taskName: string, config: Config): Promise<'quit' | 'm
       await runTimer(breakMin, sessionNumber, taskName, true, postTotalMin);
       sendNotification(config.notificationsEnabled, 'surf', 'Pausa terminata, torna al lavoro!', config.notificationSound);
       const afterBreak = await askAfterBreak(postSummary);
-      if (afterBreak === 'quit') return 'quit';
-      if (afterBreak === 'menu') return 'menu';
+    if (afterBreak === 'menu') return 'menu';
     }
   }
 }
@@ -727,7 +721,7 @@ async function main() {
       if (choice === 1)     { await showLog(config); }
       if (choice === 2)     { await showStats(config); }
       if (choice === 3)     { await showInsights(config); }
-      if (choice === 4)     { const ok = await showSettings(config); if (!ok) process.stdout.write(`\n  ⚠ Settings changed but couldn't be saved\n`); }
+      if (choice === 4)     { await showSettings(config); }
     } while (choice !== 0);
 
     const allRecords = await readRecords(config.logDir);
