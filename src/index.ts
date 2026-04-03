@@ -2,6 +2,7 @@ import { parseCli } from './cli.js';
 import { loadConfig, saveConfig, ensureDirectories, Config } from './config.js';
 import { countTodayWaves, appendWave, readRecords, listWaves } from './logger.js';
 import { getWavesPerWeekday, getWavesPerTimeSlot, getStreaks } from './analytics.js';
+import { Spinner } from './ui/spinner.js';
 import {
   setupTerminal,
   teardownTerminal,
@@ -76,7 +77,10 @@ const MENU_OPTIONS = [
 ] as const;
 
 async function showMenu(logDir: string): Promise<0 | 1 | 2 | 3 | 4 | 5 | 'log'> {
+  const spinner = new Spinner();
+  spinner.start();
   const summary = await buildSummary(logDir);
+  spinner.stop();
   let idx = 0;
 
   while (true) {
@@ -260,7 +264,10 @@ const BOLD = '\x1b[1m';
 async function showStats(config: Config): Promise<void> {
   let mode: 'week' | 'month' = 'week';
   let offset = 0;
+  const spinner = new Spinner();
+  spinner.start();
   const records = await readRecords(config.logDir);
+  spinner.stop();
 
   const countByDate = new Map<string, number>();
   const minByDate = new Map<string, number>();
@@ -444,8 +451,11 @@ function formatDateLabel(iso: string): string {
 }
 
 async function showLog(config: Config, initialDate?: string, withSummary = false): Promise<void> {
+  const spinner = new Spinner();
+  spinner.start();
   const summary = withSummary ? await buildSummary(config.logDir) : null;
   const allRecords = await readRecords(config.logDir);
+  spinner.stop();
   const datesWithRecords = [...new Set(allRecords.map(r => r.date))].sort();
 
   if (datesWithRecords.length === 0) {
@@ -507,7 +517,10 @@ function jumpToMonth(dates: string[], currentIdx: number, direction: -1 | 1): nu
 }
 
 async function showDayPicker(config: Config): Promise<void> {
+  const spinner = new Spinner();
+  spinner.start();
   const allRecords = await readRecords(config.logDir);
+  spinner.stop();
   // most recent first
   const datesWithRecords = [...new Set(allRecords.map(r => r.date))].sort().reverse();
 
@@ -584,7 +597,10 @@ async function showDayPicker(config: Config): Promise<void> {
 const MON_SUN = [1, 2, 3, 4, 5, 6, 0] as const; // Mon..Sat, Sun
 
 async function showInsights(config: Config): Promise<void> {
+  const spinner = new Spinner();
+  spinner.start();
   const records = await readRecords(config.logDir);
+  spinner.stop();
 
   if (records.length === 0) {
     process.stdout.write(screen(null, '', sectionHeader('Insights'), '', `  ${DIM}No waves yet.${RESET}`, '', `  ${DIM}[esc] back${RESET}`));
